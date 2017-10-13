@@ -10,8 +10,14 @@ class Polygon
 {
   public:
     void display();
-    void calculateEdges();
+    void displayEdges();
+    void calculateEdges(bool useDDA);
+    void drawHorizontalLine(int x1, int y1, int y2);
+    void drawVerticalLine(int x1, int x2, int y1);
+    void drawDiagonalViaDDA(int x1, int x2, int y1, int y2);
+    void drawDiagonalViaBresenham(int x1, int x2, int y1, int y2);
     Polygon();
+
 
     string description;
     int numVertexes;

@@ -44,11 +44,14 @@ int win_width;
   
 // vector of polygons to display from file
 vector<Polygon *> polygons;
+set<Point, PointComparator> edges;
+bool useDDA = true;
 
-void readDatFile();
+void processDatFile();
 void init();
 void idle();
 void display();
+void rasterize();
 void draw_pix(int x, int y);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
@@ -61,7 +64,7 @@ void check();
 int main(int argc, char **argv)
 {
 
-  readDatFile();
+  processDatFile();
 
   //the number of pixels in the grid
   grid_width = 100;
@@ -103,9 +106,9 @@ int main(int argc, char **argv)
 }
 
 /* read data file for information about polygons */
-void readDatFile()
+void processDatFile()
 {
-  ifstream rawDatFile("test_1.dat");
+  ifstream rawDatFile("test_2.dat");
   string line;
  
   // get number of polygons 
@@ -147,13 +150,16 @@ void readDatFile()
       
     }
 
-    polygon->calculateEdges();
-
-
+    polygon->calculateEdges(useDDA);
     polygons.push_back(polygon);
 
-    polygon->display();
+    set<Point, PointComparator>::iterator it;
+    for (it = polygon->edges.begin(); it != polygon->edges.end(); it++)
+    {
+      edges.insert(Point(it->x, it->y));
+    }
 
+    
   }
 
 }
@@ -203,10 +209,35 @@ void display()
 
   }
 
+  rasterize();
+
   //blits the current opengl framebuffer on the screen
   glutSwapBuffers();
   //checks for opengl errors
   check();
+}
+
+void rasterize()
+{
+  set<Point, PointComparator>::iterator it;
+  it = edges.find(Point(0, 0));
+
+  bool on = false;
+
+  for (int j = 0; j < grid_height; j++)
+  {
+    for (int i = 0; i < grid_width; i++)
+    {
+      it = edges.find(Point(i, j));
+
+      if (it != edges.end())
+        on = !on;
+
+      if (on == true)
+        draw_pix(i, j);
+    }
+    on = false;
+  }
 }
 
 
