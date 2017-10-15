@@ -1,6 +1,6 @@
 #include <iostream>
 #include <vector>
-#include <set>
+#include <map>
 
 #include "point.h"
 
@@ -10,19 +10,27 @@ class Polygon
 {
   public:
     void display();
+    void updateYMin(int y);
+    void updateYMax(int y);
+    void insertEdgePoint(Point p, PointInfo pi);
     void displayEdges();
     void calculateEdges(bool useDDA);
-    void drawHorizontalLine(int x1, int y1, int y2);
-    void drawVerticalLine(int x1, int x2, int y1);
-    void drawDiagonalViaDDA(int x1, int x2, int y1, int y2);
-    void drawDiagonalViaBresenham(int x1, int x2, int y1, int y2);
-    Polygon();
+    void markVertexesAndExtrema();
+    void drawHorizontalLine(float x1, float x2, float y1);
+    void drawVerticalLine(float x1, float x2, float y1);
+    void drawDiagonalViaDDA(float x1, float x2, float y1, float y2);
+    void drawDiagonalViaBresenham(float x1, float x2, float y1, float y2);
+    map<Point, PointInfo>::iterator findApproxPoint(int x, int y);
+    Polygon(int grid_height);
 
 
     string description;
-    int numVertexes;
     vector<Point *> vertexes;
-    set<Point, PointComparator> edges;
+    map<Point, PointInfo, PointComparator> edges;
+
+    int numVertexes;
+    float yMin;
+    float yMax;
 
 };
 

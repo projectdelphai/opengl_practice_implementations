@@ -1,9 +1,18 @@
 class Point
 {
   public:
-    int x;
-    int y;
-    Point(int x, int y);
+    Point(float x, float y);
+    float x;
+    float y;
+};
+
+class PointInfo
+{
+  public:
+    PointInfo(bool horiz, bool vert, bool extr);
+    bool partOfHorizontal;
+    bool vertex;
+    bool extrema;
 };
 
 struct PointComparator

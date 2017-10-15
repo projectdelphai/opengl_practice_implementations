@@ -6,8 +6,10 @@
 
 using namespace std;
 
-Polygon::Polygon()
+Polygon::Polygon(int grid_height)
 {
+  yMin = grid_height;
+  yMax = 0;
 }
 
 void Polygon::display()
@@ -21,6 +23,58 @@ void Polygon::display()
 
   displayEdges();
 }
+
+void Polygon::updateYMin(int y)
+{
+  if (y < yMin)
+    yMin = y;
+}
+
+void Polygon::updateYMax(int y)
+{
+  if (y > yMax)
+    yMax = y;
+}
+
+void Polygon::insertEdgePoint(Point p, PointInfo pi)
+{
+  pair<map<Point, PointInfo>::iterator, bool> ret;
+  ret = edges.insert(pair<Point, PointInfo>(p, pi));
+
+  if (ret.second == false)
+  {
+    map<Point, PointInfo>::iterator it = edges.find(p);
+    if (pi.partOfHorizontal == true && it->second.partOfHorizontal == false)
+      it->second.partOfHorizontal = true;
+  }
+  updateYMin(p.y);
+  updateYMax(p.y);
+
+}
+
+map<Point, PointInfo>::iterator Polygon::findApproxPoint(int x, int y)
+{
+  //cout << "looking for: x = " << x << ", y = " << y << endl;
+  map<Point, PointInfo>::iterator it;
+  for (it = edges.begin(); it != edges.end(); it++)
+  {
+    //cout << "element: x: " << it->x << ", y: " << it->y << endl;
+    //cout << "int element: x: " << (int)it->x << ", y: " << (int)it->y << endl;
+    if ((int)it->first.x > x)
+    {
+      //cout << "not found" << endl;
+      return edges.end();
+    }
+    else if (((int)it->first.x == x) && ((int)it->first.y == y))
+    {
+      //cout << "found" << endl;
+      return it;
+    }
+  }
+  //cout << "not found" << endl;
+  return edges.end();
+}
+
 
 void Polygon::calculateEdges(bool useDDA)
 {
@@ -41,14 +95,21 @@ void Polygon::calculateEdges(bool useDDA)
     float x2 = p2->x;
     float y2 = p2->y;
 
+    // check if new min/max found
+    updateYMin(y1);
+    updateYMin(y2);
+    updateYMax(y1);
+    updateYMax(y2);
+
     // fill in every pixel (x1, y1->y2)
     if (x1 == x2)
-      drawHorizontalLine(x1, y1, y2);
+      drawVerticalLine(x1, y1, y2);
     // fill in every pixel (x1 -> x2, y1)
     else if (y1 == y2)
-      drawVerticalLine(x1, x2, y1);
+      drawHorizontalLine(x1, x2, y1);
     else
     {
+      cout << "index: " << vertexIndex << endl;
       if (useDDA == true)
         drawDiagonalViaDDA(x1, x2, y1, y2);
       else
@@ -56,78 +117,127 @@ void Polygon::calculateEdges(bool useDDA)
     }
 
   }
-    
+
+  markVertexesAndExtrema();
+
+  //display();
+
 }
 
-void Polygon::drawHorizontalLine(int x1, int y1, int y2)
+void Polygon::markVertexesAndExtrema()
+{
+  for (int vertexIndex = 0; vertexIndex < numVertexes; vertexIndex++)
+  {
+    // find point before, current and after for each vertex
+    Point *p1 = vertexes[vertexIndex];
+    Point *p0, *p2;
+    
+    if (vertexIndex == 0)
+      p0 = vertexes[numVertexes - 1];
+    else
+      p0 = vertexes[vertexIndex - 1];
+    if (vertexIndex == (numVertexes - 1))
+      p2 = vertexes[0];
+    else
+      p2 = vertexes[vertexIndex + 1];
+
+    if (((p0->y < p1->y) && (p1->y > p2->y)) || ((p0->y > p1->y) && (p1->y < p2->y)))
+    {
+      cout << "extrema found: x=" << p1->x << ", y=" << p1->y << endl;
+      map<Point, PointInfo>::iterator it = findApproxPoint((int)p1->x, (int)p1->y);
+
+      if (it == edges.end())
+      {
+        cout << "x: " << it->first.x << ", y: " << it->first.y << endl;
+        cout << "HELP" << endl;
+      }
+      else
+      {
+        cout << "x: " << it->first.x << ", y: " << it->first.y << endl;
+        it->second.vertex = true;
+        it->second.extrema = true;
+      }
+    }
+
+
+  }
+}
+
+void Polygon::drawHorizontalLine(float x1, float x2, float y1)
 {
   // draw horizontal line to the right
-  if (y1 < y2)
+  if (x1 < x2)
   {
-    for (int y = y1 + 1; y < y2; y++)
-      edges.insert(Point(x1, y));
+    for (float x = x1; x < (x2 + 1); x++)
+      insertEdgePoint(Point(x, y1), PointInfo(true, false, false));
   }
   // draw horizontal line to the left
   else
   {
-    for (int y = y1 - 1; y > y2; y--)
-      edges.insert(Point(x1, y));
+    for (float x = x1; x > (x2 - 1); x--)
+    {
+      insertEdgePoint(Point(x, y1), PointInfo(true, false, false));
+    }
   }
 }
 
-void Polygon::drawVerticalLine(int x1, int x2, int y1)
+void Polygon::drawVerticalLine(float x1, float y1, float y2)
 {
   // draw vertical line upwards
-  if (x1 < x2)
+  if (y1 < y2)
   {
-    for (int x = x1 + 1; x < x2; x++)
-      edges.insert(Point(x, y1));
+    for (float y = y1; y < (y2 + 1); y++)
+      insertEdgePoint(Point(x1, y), PointInfo(false, false, false));
   }
   // draw vertical line downwards
   else
   {
-    for (int x = x1 - 1; x > x2; x--)
-      edges.insert(Point(x, y1));
+    for (float y = y1; y > (y2 - 1); y--)
+      insertEdgePoint(Point(x1, y), PointInfo(false, false, false));
   }
 }
 
-void Polygon::drawDiagonalViaDDA(int x1, int x2, int y1, int y2)
+void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2)
 {
-  int dx = x2 - x1;
-  int dy = y2 - y1;
+  float dx = x2 - x1;
+  float dy = y2 - y1;
 
-  int increment;
+  float increment;
 
   if (abs(dx) > abs(dy))
     increment = abs(dx);
   else
     increment = abs(dy);
 
-  float xIncrement = dx / (float)increment;
-  float yIncrement = dy / (float)increment;
+  float xIncrement = dx / increment;
+  float yIncrement = dy / increment;
 
   float x = x1;
   float y = y1;
 
-  for (int i = 0; i < increment; i++)
+  insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+  for (int i = 0; i < (int)increment; i++)
   {
     x = x + xIncrement;
     y = y + yIncrement;
-    edges.insert(Point(x, y));
+
+    cout << "i: " << i << ", x: " << x << ", y: " << y << endl;
+
+    insertEdgePoint(Point(x, y), PointInfo(false, false, false));
 
   }
 }
 
-void Polygon::drawDiagonalViaBresenham(int x1, int x2, int y1, int y2)
+void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
 {
 }
 
 void Polygon::displayEdges()
 {
   cout << "edges: " << endl;
-  set<Point, PointComparator>::iterator it;
+  map<Point, PointInfo>::iterator it;
   for (it = edges.begin(); it != edges.end(); it++)
   {
-    cout << it->x << ", " << it->y << endl;
+    cout << it->first.x << ", " << it->first.y << ", horiz: " << it->second.partOfHorizontal << endl;
   }
 }

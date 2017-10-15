@@ -41,10 +41,10 @@ float pixel_size;
 /*Window information*/
 int win_height;
 int win_width;
-  
+
 // vector of polygons to display from file
 vector<Polygon *> polygons;
-set<Point, PointComparator> edges;
+map<Point, PointInfo, PointComparator> edges;
 bool useDDA = true;
 
 void processDatFile();
@@ -63,12 +63,10 @@ void check();
 
 int main(int argc, char **argv)
 {
-
-  processDatFile();
-
   //the number of pixels in the grid
   grid_width = 100;
   grid_height = 100;
+
 
   //the size of pixels sets the inital window height and width
   //don't make the pixels too large or the screen size will be larger than
@@ -81,6 +79,8 @@ int main(int argc, char **argv)
 
   /*Set up glut functions*/
   /** See https://www.opengl.org/resources/libraries/glut/spec3/spec3.html ***/
+
+  processDatFile();
 
   glutInit(&argc,argv);
   glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
@@ -108,9 +108,9 @@ int main(int argc, char **argv)
 /* read data file for information about polygons */
 void processDatFile()
 {
-  ifstream rawDatFile("test_2.dat");
+  ifstream rawDatFile("test_1.dat");
   string line;
- 
+
   // get number of polygons 
   getline(rawDatFile, line);
 
@@ -122,7 +122,7 @@ void processDatFile()
   for (int i = 0; i < numPolygons; i++)
   {
     // create polygon
-    Polygon *polygon = new Polygon();
+    Polygon *polygon = new Polygon(grid_height);
 
     // populate with description
     getline(rawDatFile, line);
@@ -147,19 +147,19 @@ void processDatFile()
       // add vertex to polygon
       Point *p = new Point(x, y);
       polygon->vertexes.push_back(p);
-      
+
+
     }
 
     polygon->calculateEdges(useDDA);
     polygons.push_back(polygon);
 
-    set<Point, PointComparator>::iterator it;
+    map<Point, PointInfo>::iterator it;
     for (it = polygon->edges.begin(); it != polygon->edges.end(); it++)
     {
-      edges.insert(Point(it->x, it->y));
+      edges.insert(pair<Point, PointInfo>(it->first, it->second));
     }
 
-    
   }
 
 }
@@ -195,16 +195,16 @@ void display()
     int numVertexes = polygon->numVertexes;
     for (int i = 0; i < numVertexes; i++)
     {
-      int x = polygon->vertexes[i]->x;
-      int y = polygon->vertexes[i]->y;
+      float x = polygon->vertexes[i]->x;
+      float y = polygon->vertexes[i]->y;
 
       draw_pix(x, y);
     }
 
-    set<Point, PointComparator>::iterator it2;
+    map<Point, PointInfo>::iterator it2;
     for (it2 = polygon->edges.begin(); it2 != polygon->edges.end(); it2++)
     {
-      draw_pix(it2->x, it2->y);
+      draw_pix(it2->first.x, it2->first.y);
     }
 
   }
@@ -219,26 +219,59 @@ void display()
 
 void rasterize()
 {
-  set<Point, PointComparator>::iterator it;
-  it = edges.find(Point(0, 0));
-
-  bool on = false;
-
-  for (int j = 0; j < grid_height; j++)
+  vector<Polygon *>::iterator it;
+  for (it = polygons.begin(); it != polygons.end(); it++)
   {
-    for (int i = 0; i < grid_width; i++)
+    map<Point, PointInfo, PointComparator> currentEdges = (*it)->edges;
+    map<Point, PointInfo>::iterator findIt;
+
+    float yMin = (*it)->yMin;
+    float yMax = (*it)->yMax;
+
+    //cout << "ymin: " << yMin << ", ymax: " << yMax << endl;
+
+    bool on = false;
+
+    for (float j = yMin; j < yMax + 1; j++)
     {
-      it = edges.find(Point(i, j));
+      for (float i = 0; i < grid_width; i++)
+      {
+        findIt = (*it)->findApproxPoint(i, j);
 
-      if (it != edges.end())
-        on = !on;
 
-      if (on == true)
-        draw_pix(i, j);
+
+        if (findIt != (*it)->edges.end())
+        {
+          if (j == 6)
+          {
+            //cout << findIt->first.x << ", " << findIt->first.y << ", extrema: " << findIt->second.extrema << ", horiz: " << findIt->second.partOfHorizontal << endl;
+            //cout << findIt->first.x << ", " << findIt->first.y << ", on: " << on << endl;
+          }
+
+          if (findIt->second.partOfHorizontal == true)
+          {
+            on = false;
+            continue;
+          }
+          if (findIt->second.extrema != true)
+          {
+            on = !on;
+          }
+        }
+
+        if ((on == true))
+        {
+          draw_pix(i, j);
+        }
+
+      }
+      on = false;
+
     }
-    on = false;
   }
+
 }
+
 
 
 //Draws a single "pixel" given the current grid size
