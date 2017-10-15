@@ -22,8 +22,10 @@
 //other includes
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 #include <fstream>
 #include <set>
+#include <tuple>
 
 #include "polygon.h"
 
@@ -45,14 +47,22 @@ int win_width;
 // vector of polygons to display from file
 vector<Polygon *> polygons;
 map<Point, PointInfo, PointComparator> edges;
+map<Point, int, PointComparator> rasterizedPoints;
 bool useDDA = true;
+int numPolygons;
+int currentPolygonIndex = 0;
+// viewport
+int viewport[4];
+tuple<int, int, int> blue(.2, .2, 1.0);
+tuple<int, int, int> red(1.0, .2, .2);
+tuple<int, int, int> green(.2, 1.0, .2);
 
 void processDatFile();
 void init();
 void idle();
 void display();
 void rasterize();
-void draw_pix(int x, int y);
+void draw_pix(int x, int y, bool drawingViewport, tuple<int, int, int> color);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
 void mouse(int button, int state, int x, int y);
@@ -66,6 +76,12 @@ int main(int argc, char **argv)
   //the number of pixels in the grid
   grid_width = 100;
   grid_height = 100;
+
+  // viewport[xmin, ymin, xmax, ymax]
+  viewport[0] = 0;
+  viewport[1] = 0;
+  viewport[2] = grid_width - 1;
+  viewport[3] = grid_height - 1;
 
 
   //the size of pixels sets the inital window height and width
@@ -116,7 +132,7 @@ void processDatFile()
 
   // convert to int
   // note: convert to strtol for better security
-  int numPolygons = atoi(line.c_str());
+  numPolygons = atoi(line.c_str());
 
   // loop through polygons
   for (int i = 0; i < numPolygons; i++)
@@ -128,13 +144,13 @@ void processDatFile()
     getline(rawDatFile, line);
     polygon->description = line;
 
-    // get number of vertexes in polygon
+    // get number of vertices in polygon
     getline(rawDatFile, line);
-    int numVertexes = atoi(line.c_str());
-    polygon->numVertexes = numVertexes;
+    int numVertices = atoi(line.c_str());
+    polygon->numVertices = numVertices;
 
     // loop through every vertex
-    for (int j = 0; j < numVertexes; j++)
+    for (int j = 0; j < numVertices; j++)
     {
       getline(rawDatFile, line);
       int pos = line.find_first_of(" ");
@@ -146,11 +162,12 @@ void processDatFile()
 
       // add vertex to polygon
       Point *p = new Point(x, y);
-      polygon->vertexes.push_back(p);
+      polygon->vertices.push_back(p);
 
 
     }
 
+    polygon->calculateCentroid();
     polygon->calculateEdges(useDDA);
     polygons.push_back(polygon);
 
@@ -192,19 +209,19 @@ void display()
   for (vector<Polygon *>::iterator it = polygons.begin(); it != polygons.end(); it++)
   {
     Polygon *polygon = *it;
-    int numVertexes = polygon->numVertexes;
-    for (int i = 0; i < numVertexes; i++)
+    int numVertices = polygon->numVertices;
+    for (int i = 0; i < numVertices; i++)
     {
-      float x = polygon->vertexes[i]->x;
-      float y = polygon->vertexes[i]->y;
+      float x = polygon->vertices[i]->x;
+      float y = polygon->vertices[i]->y;
 
-      draw_pix(x, y);
+      draw_pix(x, y, false, blue);
     }
 
     map<Point, PointInfo>::iterator it2;
     for (it2 = polygon->edges.begin(); it2 != polygon->edges.end(); it2++)
     {
-      draw_pix(it2->first.x, it2->first.y);
+      draw_pix(it2->first.x, it2->first.y, false, blue);
     }
 
   }
@@ -219,6 +236,20 @@ void display()
 
 void rasterize()
 {
+  // draw viewport
+  for (int i = viewport[0]; i < (viewport[2] + 1); i++)
+  {
+    draw_pix(i, viewport[1], true, green);
+    draw_pix(i, viewport[3], true, green);
+  }
+  for (int i = viewport[1]; i < viewport[3]; i++)
+  {
+    draw_pix(viewport[0], i, true, green);
+    draw_pix(viewport[2], i, true, green);
+  }
+
+  // for every polygon, fill it in via horizontal scan lines
+  int polygonIndex = 0;
   vector<Polygon *>::iterator it;
   for (it = polygons.begin(); it != polygons.end(); it++)
   {
@@ -228,31 +259,25 @@ void rasterize()
     float yMin = (*it)->yMin;
     float yMax = (*it)->yMax;
 
-    //cout << "ymin: " << yMin << ", ymax: " << yMax << endl;
-
     bool on = false;
 
     for (float j = yMin; j < yMax + 1; j++)
     {
       for (float i = 0; i < grid_width; i++)
       {
+        // find the floating point edge given an integer point
         findIt = (*it)->findApproxPoint(i, j);
-
-
 
         if (findIt != (*it)->edges.end())
         {
-          if (j == 6)
-          {
-            //cout << findIt->first.x << ", " << findIt->first.y << ", extrema: " << findIt->second.extrema << ", horiz: " << findIt->second.partOfHorizontal << endl;
-            //cout << findIt->first.x << ", " << findIt->first.y << ", on: " << on << endl;
-          }
-
           if (findIt->second.partOfHorizontal == true)
           {
             on = false;
             continue;
           }
+          
+          // as long as it's not an extrema, flip the on bit
+          // to start drawing or stop drawing
           if (findIt->second.extrema != true)
           {
             on = !on;
@@ -261,13 +286,16 @@ void rasterize()
 
         if ((on == true))
         {
-          draw_pix(i, j);
+          draw_pix(i, j, false, blue);
+          // keep track of rasterized points for mouse interactions
+          rasterizedPoints.insert(pair<Point, int>(Point(i, j), polygonIndex));
         }
 
       }
       on = false;
 
     }
+    polygonIndex++;
   }
 
 }
@@ -276,11 +304,16 @@ void rasterize()
 
 //Draws a single "pixel" given the current grid size
 //don't change anything in this for project 1
-void draw_pix(int x, int y){
-  glBegin(GL_POINTS);
-  glColor3f(.2,.2,1.0);
-  glVertex3f(x+.5,y+.5,0);
-  glEnd();
+void draw_pix(int x, int y, bool drawingViewPort, tuple<int, int, int> color){
+  bool pixInside=((viewport[0] < x && x < viewport[2]) && (viewport[1] < y && y < viewport[3]));
+
+  if (pixInside || drawingViewPort)
+  {
+    glBegin(GL_POINTS);
+    glColor3f(get<0>(color),get<1>(color),get<2>(color));
+    glVertex3f(x+.5,y+.5,0);
+    glEnd();
+  }
 }
 
 /*Gets called when display size changes, including initial craetion of the display*/
@@ -332,22 +365,81 @@ void key(unsigned char ch, int x, int y)
 void mouse(int button, int state, int x, int y)
 {
   //print the pixel location, and the grid location
-  printf ("MOUSE AT PIXEL: %d %d, GRID: %d %d\n",x,y,(int)(x/pixel_size),(int)((win_height-y)/pixel_size));
+  //printf ("MOUSE AT PIXEL: %d %d, GRID: %d %d\n",x,y,(int)(x/pixel_size),(int)((win_height-y)/pixel_size));
+
+  bool leftButtonUsed = false;
+  bool rightButtonUsed = false;
   switch(button)
   {
     case GLUT_LEFT_BUTTON: //left button
-      printf("LEFT ");
+      leftButtonUsed = true;
       break;
     case GLUT_RIGHT_BUTTON: //right button
-      printf("RIGHT ");
+      rightButtonUsed = true;
+      break;
     default:
       printf("UNKNOWN "); //any other mouse button
       break;
   }
   if(state !=GLUT_DOWN)  //button released
-    printf("BUTTON UP\n");
+  {
+  }
+    //printf("BUTTON UP\n");
   else
-    printf("BUTTON DOWN\n");  //button clicked
+  {
+    if (leftButtonUsed)
+    {
+      int selectedX = (int)(x/pixel_size);
+      int selectedY = (int)((win_height-y)/pixel_size);
+
+      cout << "selectedX: " << selectedX << ", selectedY: " << selectedY << endl;
+
+      for (int i = 0; i < numPolygons; i++)
+      {
+        map<Point, int>::iterator ret;
+        ret = rasterizedPoints.find(Point(selectedX, selectedY));
+
+        if (ret != rasterizedPoints.end())
+        {
+          currentPolygonIndex = ret->second;
+          break;
+        }
+
+      }
+    }
+    else if (rightButtonUsed)
+    {
+      int x2 = (int)(x/pixel_size);
+      int y2 = (int)((win_height-y)/pixel_size);
+
+      // for the min point
+      int x1 = viewport[0];
+      int y1 = viewport[1];
+      int dx = x2 - x1;
+      int dy = y2 - y1;
+      float minDistance = sqrt((dx*dx) + (dy*dy));
+
+      x1 = viewport[2];
+      y1 = viewport[3];
+      dx = x2 - x1;
+      dy = y2 - y1;
+      float maxDistance = sqrt((dx*dx) + (dy*dy));
+
+      if (minDistance < maxDistance)
+      {
+        viewport[0] = x2;
+        viewport[1] = y2;
+      }
+      else
+      {
+        viewport[2] = x2;
+        viewport[3] = y2;
+      }
+
+      cout << viewport[0] << ", " << viewport[1] << ", " << viewport[2] << ", " << viewport[3] << endl;
+
+    }
+  }
 
   //redraw the scene after mouse click
   glutPostRedisplay();

@@ -6,7 +6,7 @@ GLLIB :=  -lGL -lGLEW -lGLU -lglut
 #GLLIB := -framework OpenGL -framework GLUT
 
 #COMPILER FLAGS
-CCFLAGS := -Wall -g
+CCFLAGS := -Wall -g -std=c++11
 
 #include directories
 #should include gl.h glut.h etc...

@@ -15,10 +15,10 @@ Polygon::Polygon(int grid_height)
 void Polygon::display()
 {
   cout << "Description: " << description << endl;
-  cout << "Number of vertexes: " << numVertexes << endl;
-  for (int i = 0; i < numVertexes; i++)
+  cout << "Number of vertices: " << numVertices << endl;
+  for (int i = 0; i < numVertices; i++)
   {
-    cout << vertexes[i]->x << " " << vertexes[i]->y << endl;
+    cout << vertices[i]->x << " " << vertices[i]->y << endl;
   }
 
   displayEdges();
@@ -75,20 +75,25 @@ map<Point, PointInfo>::iterator Polygon::findApproxPoint(int x, int y)
   return edges.end();
 }
 
+void Polygon::calculateCentroid()
+{
+  // simple method though not as accurate
+}
+
 
 void Polygon::calculateEdges(bool useDDA)
 {
-  for (int vertexIndex = 0; vertexIndex < numVertexes; vertexIndex++)
+  for (int vertexIndex = 0; vertexIndex < numVertices; vertexIndex++)
   {
-    Point *p1 = vertexes[vertexIndex];
+    Point *p1 = vertices[vertexIndex];
 
     // pick next vertex or loop back to the first vertex
     Point *p2;
 
-    if (vertexIndex == (numVertexes - 1))
-      p2 = vertexes[0];
+    if (vertexIndex == (numVertices - 1))
+      p2 = vertices[0];
     else
-      p2 = vertexes[vertexIndex + 1];
+      p2 = vertices[vertexIndex + 1];
 
     float x1 = p1->x;
     float y1 = p1->y;
@@ -118,28 +123,28 @@ void Polygon::calculateEdges(bool useDDA)
 
   }
 
-  markVertexesAndExtrema();
+  markVerticesAndExtrema();
 
   //display();
 
 }
 
-void Polygon::markVertexesAndExtrema()
+void Polygon::markVerticesAndExtrema()
 {
-  for (int vertexIndex = 0; vertexIndex < numVertexes; vertexIndex++)
+  for (int vertexIndex = 0; vertexIndex < numVertices; vertexIndex++)
   {
     // find point before, current and after for each vertex
-    Point *p1 = vertexes[vertexIndex];
+    Point *p1 = vertices[vertexIndex];
     Point *p0, *p2;
     
     if (vertexIndex == 0)
-      p0 = vertexes[numVertexes - 1];
+      p0 = vertices[numVertices - 1];
     else
-      p0 = vertexes[vertexIndex - 1];
-    if (vertexIndex == (numVertexes - 1))
-      p2 = vertexes[0];
+      p0 = vertices[vertexIndex - 1];
+    if (vertexIndex == (numVertices - 1))
+      p2 = vertices[0];
     else
-      p2 = vertexes[vertexIndex + 1];
+      p2 = vertices[vertexIndex + 1];
 
     if (((p0->y < p1->y) && (p1->y > p2->y)) || ((p0->y > p1->y) && (p1->y < p2->y)))
     {

@@ -14,8 +14,9 @@ class Polygon
     void updateYMax(int y);
     void insertEdgePoint(Point p, PointInfo pi);
     void displayEdges();
+    void calculateCentroid();
     void calculateEdges(bool useDDA);
-    void markVertexesAndExtrema();
+    void markVerticesAndExtrema();
     void drawHorizontalLine(float x1, float x2, float y1);
     void drawVerticalLine(float x1, float x2, float y1);
     void drawDiagonalViaDDA(float x1, float x2, float y1, float y2);
@@ -25,10 +26,12 @@ class Polygon
 
 
     string description;
-    vector<Point *> vertexes;
+    vector<Point *> vertices;
     map<Point, PointInfo, PointComparator> edges;
+    Point centroid;
 
-    int numVertexes;
+    
+    int numVertices;
     float yMin;
     float yMax;
 
