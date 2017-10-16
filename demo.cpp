@@ -48,9 +48,15 @@ int win_width;
 vector<Polygon *> polygons;
 map<Point, PointInfo, PointComparator> edges;
 map<Point, int, PointComparator> rasterizedPoints;
+
 bool useDDA = true;
+bool scaleTurnedOn = false;
+bool leftButtonUsed = false;
+bool rightButtonUsed = false;
+
 int numPolygons;
 int currentPolygonIndex = 0;
+
 // viewport
 int viewport[4];
 tuple<int, int, int> blue(.2, .2, 1.0);
@@ -171,15 +177,33 @@ void processDatFile()
     polygon->calculateEdges(useDDA);
     polygons.push_back(polygon);
 
+    // pretty sure this isn't necessary, remove after confirming
+    map<Point, PointInfo>::iterator it;
+    for (it = polygon->edges.begin(); it != polygon->edges.end(); it++)
+    {
+      //edges.insert(pair<Point, PointInfo>(it->first, it->second));
+    }
+
+  }
+
+}
+
+/*void recalculateRasterizedEdges()
+{
+  for (int i = 0; i < numPolygons; i++)
+  {
+    Polygon *polygon = polygons[i];
+    edges.clear();
+
     map<Point, PointInfo>::iterator it;
     for (it = polygon->edges.begin(); it != polygon->edges.end(); it++)
     {
       edges.insert(pair<Point, PointInfo>(it->first, it->second));
     }
 
-  }
 
-}
+  }
+}*/
 
 /*initialize gl stufff*/
 void init()
@@ -236,6 +260,7 @@ void display()
 
 void rasterize()
 {
+  rasterizedPoints.clear();
   // draw viewport
   for (int i = viewport[0]; i < (viewport[2] + 1); i++)
   {
@@ -281,18 +306,29 @@ void rasterize()
           if (findIt->second.extrema != true)
           {
             on = !on;
+            continue;
           }
         }
 
         if ((on == true))
         {
-          draw_pix(i, j, false, blue);
+          if (polygonIndex == currentPolygonIndex)
+          {
+            if (scaleTurnedOn)
+              draw_pix(i, j, false, green);
+            else
+              draw_pix(i, j, false, red);
+          }
+          else
+            draw_pix(i, j, false, blue);
           // keep track of rasterized points for mouse interactions
           rasterizedPoints.insert(pair<Point, int>(Point(i, j), polygonIndex));
         }
 
       }
       on = false;
+
+      draw_pix((*it)->centroid.x, (*it)->centroid.y, false, green);
 
     }
     polygonIndex++;
@@ -349,6 +385,29 @@ void reshape(int width, int height)
 //gets called when a key is pressed on the keyboard
 void key(unsigned char ch, int x, int y)
 {
+  if (ch == 's')
+  {
+    scaleTurnedOn = !scaleTurnedOn;
+  }
+  else if (ch == '+' || ch == '=')
+  {
+    polygons[currentPolygonIndex]->scale(1.05, 1.05);
+    rasterizedPoints.clear();
+  }
+  else if (ch == '-')
+  {
+    polygons[currentPolygonIndex]->scale(.9, .9);
+    rasterizedPoints.clear();
+  }
+  else if (ch == 'r')
+  {
+    cout << "Please enter an angle to rotate the selected polygon by: ";
+    float angle;
+    cin >> angle;
+    cout << "You selected " << angle << " degrees." << endl;
+    polygons[currentPolygonIndex]->rotate(angle);
+    rasterizedPoints.clear();
+  }
   switch(ch)
   {
     default:
@@ -367,8 +426,8 @@ void mouse(int button, int state, int x, int y)
   //print the pixel location, and the grid location
   //printf ("MOUSE AT PIXEL: %d %d, GRID: %d %d\n",x,y,(int)(x/pixel_size),(int)((win_height-y)/pixel_size));
 
-  bool leftButtonUsed = false;
-  bool rightButtonUsed = false;
+  leftButtonUsed = false;
+  rightButtonUsed = false;
   switch(button)
   {
     case GLUT_LEFT_BUTTON: //left button
@@ -384,15 +443,12 @@ void mouse(int button, int state, int x, int y)
   if(state !=GLUT_DOWN)  //button released
   {
   }
-    //printf("BUTTON UP\n");
   else
   {
     if (leftButtonUsed)
     {
       int selectedX = (int)(x/pixel_size);
       int selectedY = (int)((win_height-y)/pixel_size);
-
-      cout << "selectedX: " << selectedX << ", selectedY: " << selectedY << endl;
 
       for (int i = 0; i < numPolygons; i++)
       {
@@ -404,7 +460,6 @@ void mouse(int button, int state, int x, int y)
           currentPolygonIndex = ret->second;
           break;
         }
-
       }
     }
     else if (rightButtonUsed)
@@ -436,6 +491,19 @@ void mouse(int button, int state, int x, int y)
         viewport[3] = y2;
       }
 
+      if (viewport[0] > viewport[2])
+      {
+        int temp = viewport[0];
+        viewport[0] = viewport[2];
+        viewport[2] = temp;
+      }
+      if (viewport[1] > viewport[3])
+      {
+        int temp = viewport[1];
+        viewport[1] = viewport[3];
+        viewport[3] = temp;
+      }
+
       cout << viewport[0] << ", " << viewport[1] << ", " << viewport[2] << ", " << viewport[3] << endl;
 
     }
@@ -448,7 +516,15 @@ void mouse(int button, int state, int x, int y)
 //gets called when the curser moves accross the scene
 void motion(int x, int y)
 {
-  //redraw the scene after mouse movement
+  if (leftButtonUsed)
+  {
+    int selectedX = (int)(x/pixel_size);
+    int selectedY = (int)((win_height-y)/pixel_size);
+    polygons[currentPolygonIndex]->translate(Point(selectedX, selectedY));
+    rasterizedPoints.clear();
+    //redraw the scene after mouse movement
+  }
+ 
   glutPostRedisplay();
 }
 

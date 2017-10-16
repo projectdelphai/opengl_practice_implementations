@@ -6,6 +6,12 @@ Point::Point(float rx, float ry)
   y = ry;
 }
 
+Point::Point()
+{
+  x = 0;
+  y = 0;
+}
+
 PointInfo::PointInfo(bool horiz, bool vert, bool extr)
 {
   partOfHorizontal = horiz;

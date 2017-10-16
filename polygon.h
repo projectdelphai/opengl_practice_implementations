@@ -21,6 +21,16 @@ class Polygon
     void drawVerticalLine(float x1, float x2, float y1);
     void drawDiagonalViaDDA(float x1, float x2, float y1, float y2);
     void drawDiagonalViaBresenham(float x1, float x2, float y1, float y2);
+
+    // transformations
+    void translate(Point p);
+    void scale(float dx, float dy);
+    void rotate(float angle);
+    
+    float toRadians(float degrees);
+    float toDegrees(float radians);
+
+
     map<Point, PointInfo>::iterator findApproxPoint(int x, int y);
     Polygon(int grid_height);
 

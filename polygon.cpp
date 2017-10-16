@@ -77,7 +77,21 @@ map<Point, PointInfo>::iterator Polygon::findApproxPoint(int x, int y)
 
 void Polygon::calculateCentroid()
 {
+  float sumx = 0;
+  float sumy = 0;
   // simple method though not as accurate
+  for (int i = 0; i < numVertices; i++)
+  {
+    sumx = sumx + vertices[i]->x;
+    sumy = sumy + vertices[i]->y;
+  }
+
+  float averagex = sumx / numVertices;
+  float averagey = sumy / numVertices;
+
+  centroid.x = averagex;
+  centroid.y = averagey;
+
 }
 
 
@@ -114,7 +128,6 @@ void Polygon::calculateEdges(bool useDDA)
       drawHorizontalLine(x1, x2, y1);
     else
     {
-      cout << "index: " << vertexIndex << endl;
       if (useDDA == true)
         drawDiagonalViaDDA(x1, x2, y1, y2);
       else
@@ -226,8 +239,6 @@ void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2)
     x = x + xIncrement;
     y = y + yIncrement;
 
-    cout << "i: " << i << ", x: " << x << ", y: " << y << endl;
-
     insertEdgePoint(Point(x, y), PointInfo(false, false, false));
 
   }
@@ -235,6 +246,110 @@ void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2)
 
 void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
 {
+}
+
+void Polygon::translate(Point p)
+{
+  float x1 = centroid.x;
+  float y1 = centroid.y;
+  
+  float x2 = p.x;
+  float y2 = p.y;
+
+  float dx = x2 - x1;
+  float dy = y2 - y1;
+
+  for (int i = 0; i < numVertices; i++)
+  {
+    vertices[i]->x += dx;
+    vertices[i]->y += dy;
+  }
+
+  map<Point, PointInfo, PointComparator> newEdges;
+  map<Point, PointInfo>::iterator it;
+  for (it = edges.begin(); it != edges.end(); it++)
+  {
+    float newX = it->first.x + dx;
+    float newY = it->first.y + dy;
+
+    newEdges.insert(pair<Point, PointInfo>(Point(newX, newY), it->second));
+
+  }
+
+  centroid.x += dx;
+  centroid.y += dy;
+
+  edges.clear();
+  for (it = newEdges.begin(); it != newEdges.end(); it++)
+  {
+    insertEdgePoint(it->first, it->second);
+  }
+
+}
+
+void Polygon::scale(float dx, float dy)
+{
+  if (dx == 0 && dy == 0)
+    return;
+  
+  // translate to origin
+  Point oldPoint(centroid.x, centroid.y);
+
+  translate(Point(0.0, 0.0));
+
+  for (int i = 0; i < numVertices; i++)
+  {
+    vertices[i]->x *= dx;
+    vertices[i]->y *= dy;
+  }
+
+  edges.clear();
+  calculateEdges(true);
+
+  translate(oldPoint);
+
+}
+
+float Polygon::toRadians(float degrees)
+{
+  return (degrees * M_PI) / 180;
+}
+
+float Polygon::toDegrees(float radians)
+{
+  return (radians * 180) / M_PI;
+}
+
+void Polygon::rotate(float angle)
+{
+  Point oldPoint(centroid.x, centroid.y);
+
+  translate(Point(0.0, 0.0));
+
+  cout << "angle: " << angle << endl;
+
+  for (int i = 0; i < numVertices; i++)
+  {
+    float angleInRadians = toRadians(angle);
+
+    cout << "angle in radians: " << angleInRadians << endl;
+
+    float x = vertices[i]->x;
+    float y = vertices[i]->y;
+
+    cout << "x: " << x << ", " << y << endl;
+
+    float costheta = cos(angleInRadians);
+    float sintheta = sin(angleInRadians);
+
+    vertices[i]->x = (x * costheta) - (y * sintheta);
+    vertices[i]->y = (x * sintheta) + (y * costheta);
+  }
+
+  edges.clear();
+  calculateEdges(true);
+
+  translate(oldPoint);
 }
 
 void Polygon::displayEdges()
