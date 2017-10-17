@@ -486,24 +486,9 @@ void key(unsigned char ch, int x, int y)
   {
     save();
   }
-  else if (ch == '1')
+  else if ((int)ch > 0)
   {
-    useDDA = true;
-    useBresenham = false;
-    for (int i = 0; i < numPolygons; i++)
-    {
-      polygons[i]->calculateEdges(true);
-    }
-  }
-  else if (ch == '2')
-  {
-    useDDA = false;
-    useBresenham = true;
-    for (int i = 0; i < numPolygons; i++)
-    {
-      polygons[i]->calculateEdges(false);
-    }
- 
+    currentPolygonIndex = (int)ch - '0' - 1;
   }
   else if (ch == '+' || ch == '=')
   {
