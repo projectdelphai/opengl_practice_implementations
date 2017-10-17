@@ -49,11 +49,14 @@ vector<Polygon *> polygons;
 map<Point, PointInfo, PointComparator> edges;
 map<Point, int, PointComparator> rasterizedPoints;
 
-bool useDDA = true;
+bool useDDA = false;
+bool useBresenham = true;
 bool scaleTurnedOn = false;
+bool rotateTurnedOn = false;
 bool leftButtonUsed = false;
 bool rightButtonUsed = false;
 
+int method = 1;
 int numPolygons;
 int currentPolygonIndex = 0;
 
@@ -62,15 +65,20 @@ int viewport[4];
 tuple<int, int, int> blue(.2, .2, 1.0);
 tuple<int, int, int> red(1.0, .2, .2);
 tuple<int, int, int> green(.2, 1.0, .2);
+tuple<int, int, int> black(0.2, 0.2, 0.2);
+char *filename;
+
 
 void processDatFile();
 void init();
 void idle();
 void display();
 void rasterize();
+void save();
 void draw_pix(int x, int y, bool drawingViewport, tuple<int, int, int> color);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
+void specialKey(int key, int x, int y);
 void mouse(int button, int state, int x, int y);
 void motion(int x, int y);
 void check();
@@ -79,15 +87,29 @@ void check();
 
 int main(int argc, char **argv)
 {
+  filename = argv[1];
+  method = atoi(argv[2]);
+
+  if (method == 1)
+  {
+    useDDA = true;
+    useBresenham = false;
+  }
+  else if (method == 2)
+  {
+    useDDA = false;
+    useBresenham = true;
+  }
+
   //the number of pixels in the grid
   grid_width = 100;
   grid_height = 100;
 
   // viewport[xmin, ymin, xmax, ymax]
-  viewport[0] = 0;
-  viewport[1] = 0;
-  viewport[2] = grid_width - 1;
-  viewport[3] = grid_height - 1;
+  viewport[0] = -1;
+  viewport[1] = -1;
+  viewport[2] = grid_width;
+  viewport[3] = grid_height;
 
 
   //the size of pixels sets the inital window height and width
@@ -119,6 +141,9 @@ int main(int argc, char **argv)
   glutMotionFunc(motion);   //mouse movement events
   glutKeyboardFunc(key);    //Keyboard events
   glutIdleFunc(idle);       //Function called while program is sitting "idle"
+  glutSpecialFunc(specialKey);
+
+  glutSetWindow(1);
 
   //initialize opengl variables
   init();
@@ -130,7 +155,7 @@ int main(int argc, char **argv)
 /* read data file for information about polygons */
 void processDatFile()
 {
-  ifstream rawDatFile("test_1.dat");
+  ifstream rawDatFile(filename);
   string line;
 
   // get number of polygons 
@@ -174,7 +199,11 @@ void processDatFile()
     }
 
     polygon->calculateCentroid();
-    polygon->calculateEdges(useDDA);
+    if (useDDA)
+      polygon->calculateEdges(true);
+    else
+      polygon->calculateEdges(false);
+
     polygons.push_back(polygon);
 
     // pretty sure this isn't necessary, remove after confirming
@@ -239,13 +268,13 @@ void display()
       float x = polygon->vertices[i]->x;
       float y = polygon->vertices[i]->y;
 
-      draw_pix(x, y, false, blue);
+      draw_pix(x, y, false, black);
     }
 
     map<Point, PointInfo>::iterator it2;
     for (it2 = polygon->edges.begin(); it2 != polygon->edges.end(); it2++)
     {
-      draw_pix(it2->first.x, it2->first.y, false, blue);
+      draw_pix(it2->first.x, it2->first.y, false, black);
     }
 
   }
@@ -278,7 +307,6 @@ void rasterize()
   vector<Polygon *>::iterator it;
   for (it = polygons.begin(); it != polygons.end(); it++)
   {
-    map<Point, PointInfo, PointComparator> currentEdges = (*it)->edges;
     map<Point, PointInfo>::iterator findIt;
 
     float yMin = (*it)->yMin;
@@ -286,6 +314,7 @@ void rasterize()
 
     bool on = false;
 
+    float previousX = 0;
     for (float j = yMin; j < yMax + 1; j++)
     {
       for (float i = 0; i < grid_width; i++)
@@ -295,12 +324,38 @@ void rasterize()
 
         if (findIt != (*it)->edges.end())
         {
+          if (i == (previousX + 1))
+          {
+            bool nextPointExists = false;
+            map<Point, PointInfo>::iterator it2;
+            for (it2 = (*it)->edges.begin(); it2 != (*it)->edges.end(); it2++)
+            {
+              if (((int)it2->first.y == 79 && j == 79))
+              {
+              }
+              if (((int)it2->first.y) == j)
+              {
+                if ((int)it2->first.x > i)
+                {
+                  nextPointExists = true;
+                }
+              }
+            }
+            if (!nextPointExists)
+            {
+              on = false;
+            }
+            continue;
+
+          }
+            
           if (findIt->second.partOfHorizontal == true)
           {
             on = false;
             continue;
           }
           
+          previousX = i;
           // as long as it's not an extrema, flip the on bit
           // to start drawing or stop drawing
           if (findIt->second.extrema != true)
@@ -316,23 +371,51 @@ void rasterize()
           {
             if (scaleTurnedOn)
               draw_pix(i, j, false, green);
+            else if (rotateTurnedOn)
+            {
+              draw_pix(i,j, false, blue);
+            }
             else
               draw_pix(i, j, false, red);
           }
           else
-            draw_pix(i, j, false, blue);
+            draw_pix(i, j, false, black);
           // keep track of rasterized points for mouse interactions
           rasterizedPoints.insert(pair<Point, int>(Point(i, j), polygonIndex));
         }
-
+        
       }
       on = false;
 
-      draw_pix((*it)->centroid.x, (*it)->centroid.y, false, green);
+      //draw_pix((*it)->centroid.x, (*it)->centroid.y, false, black);
 
     }
     polygonIndex++;
   }
+
+}
+
+void save()
+{
+  
+  ofstream file;
+  file.open(filename);
+  file << numPolygons << "\n";
+
+  for (int i = 0; i < numPolygons; i++)
+  {
+    file << polygons[i]->description << "\n";
+    file << polygons[i]->numVertices << "\n";
+    for (int j = 0; j < polygons[i]->numVertices; j++)
+    {
+      file << polygons[i]->vertices[j]->x << " " << polygons[i]->vertices[j]->y << '\n';
+    }
+  }
+
+  file.close();
+
+  glutDestroyWindow(glutGetWindow());
+  exit(0);
 
 }
 
@@ -380,6 +463,8 @@ void reshape(int width, int height)
   glPointSize(pixel_size);
   //check for opengl errors
   check();
+
+  rasterizedPoints.clear();
 }
 
 //gets called when a key is pressed on the keyboard
@@ -388,35 +473,88 @@ void key(unsigned char ch, int x, int y)
   if (ch == 's')
   {
     scaleTurnedOn = !scaleTurnedOn;
-  }
-  else if (ch == '+' || ch == '=')
-  {
-    polygons[currentPolygonIndex]->scale(1.05, 1.05);
-    rasterizedPoints.clear();
-  }
-  else if (ch == '-')
-  {
-    polygons[currentPolygonIndex]->scale(.9, .9);
-    rasterizedPoints.clear();
+    if (scaleTurnedOn)
+      rotateTurnedOn = false;
   }
   else if (ch == 'r')
   {
-    cout << "Please enter an angle to rotate the selected polygon by: ";
-    float angle;
-    cin >> angle;
-    cout << "You selected " << angle << " degrees." << endl;
-    polygons[currentPolygonIndex]->rotate(angle);
-    rasterizedPoints.clear();
+    rotateTurnedOn = !rotateTurnedOn;
+    if (rotateTurnedOn)
+      scaleTurnedOn = false;
   }
-  switch(ch)
+  else if (ch == 'q')
   {
-    default:
-      //prints out which key the user hit
-      printf("User hit the \"%c\" key\n",ch);
-      break;
+    save();
   }
-  //redraw the scene after keyboard input
+  else if (ch == '1')
+  {
+    useDDA = true;
+    useBresenham = false;
+    for (int i = 0; i < numPolygons; i++)
+    {
+      polygons[i]->calculateEdges(true);
+    }
+  }
+  else if (ch == '2')
+  {
+    useDDA = false;
+    useBresenham = true;
+    for (int i = 0; i < numPolygons; i++)
+    {
+      polygons[i]->calculateEdges(false);
+    }
+ 
+  }
+  else if (ch == '+' || ch == '=')
+  {
+    if (scaleTurnedOn)
+    {
+      polygons[currentPolygonIndex]->scale(1.05, 1.05);
+      rasterizedPoints.clear();
+    }
+    else if (rotateTurnedOn)
+    {
+      polygons[currentPolygonIndex]->rotate(1.0);
+      rasterizedPoints.clear();
+    }
+  }
+  else if (ch == '-')
+  {
+    if (scaleTurnedOn)
+    {
+      polygons[currentPolygonIndex]->scale(.9, .9);
+      rasterizedPoints.clear();
+    }
+    else if (rotateTurnedOn)
+    {
+      polygons[currentPolygonIndex]->rotate(-1.0);
+      rasterizedPoints.clear();
+    }
+  }
+ //redraw the scene after keyboard input
   glutPostRedisplay();
+}
+
+void specialKey(int key, int x, int y)
+{
+  float centerx = polygons[currentPolygonIndex]->centroid.x;
+  float centery = polygons[currentPolygonIndex]->centroid.y;
+  if (key == GLUT_KEY_RIGHT)
+  {
+    polygons[currentPolygonIndex]->translate(Point(centerx + 1, centery));
+  }
+  else if (key == GLUT_KEY_LEFT)
+  {
+    polygons[currentPolygonIndex]->translate(Point(centerx - 1, centery));
+  }
+  else if (key == GLUT_KEY_UP)
+  {
+    polygons[currentPolygonIndex]->translate(Point(centerx, centery + 1));
+  }
+  else if (key == GLUT_KEY_DOWN)
+  {
+    polygons[currentPolygonIndex]->translate(Point(centerx, centery - 1));
+  }
 }
 
 

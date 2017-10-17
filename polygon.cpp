@@ -40,6 +40,7 @@ void Polygon::insertEdgePoint(Point p, PointInfo pi)
 {
   pair<map<Point, PointInfo>::iterator, bool> ret;
   ret = edges.insert(pair<Point, PointInfo>(p, pi));
+  edgesSortedByY.insert(pair<Point, PointInfo>(p, pi));
 
   if (ret.second == false)
   {
@@ -149,7 +150,7 @@ void Polygon::markVerticesAndExtrema()
     // find point before, current and after for each vertex
     Point *p1 = vertices[vertexIndex];
     Point *p0, *p2;
-    
+
     if (vertexIndex == 0)
       p0 = vertices[numVertices - 1];
     else
@@ -161,17 +162,17 @@ void Polygon::markVerticesAndExtrema()
 
     if (((p0->y < p1->y) && (p1->y > p2->y)) || ((p0->y > p1->y) && (p1->y < p2->y)))
     {
-      cout << "extrema found: x=" << p1->x << ", y=" << p1->y << endl;
+      //cout << "extrema found: x=" << p1->x << ", y=" << p1->y << endl;
       map<Point, PointInfo>::iterator it = findApproxPoint((int)p1->x, (int)p1->y);
 
       if (it == edges.end())
       {
-        cout << "x: " << it->first.x << ", y: " << it->first.y << endl;
-        cout << "HELP" << endl;
+        //cout << "x: " << it->first.x << ", y: " << it->first.y << endl;
+        //cout << "HELP" << endl;
       }
       else
       {
-        cout << "x: " << it->first.x << ", y: " << it->first.y << endl;
+        //cout << "x: " << it->first.x << ", y: " << it->first.y << endl;
         it->second.vertex = true;
         it->second.extrema = true;
       }
@@ -246,13 +247,132 @@ void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2)
 
 void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
 {
+  if (x2 < x1 && y2 < y1)
+    drawDiagonalViaBresenham(x2, x1, y2, y1);
+
+  float dx = x2 - x1;
+  float dy = y2 - y1;
+  float slope = dy / dx;
+  float slope2 = dx / dy;
+
+  if (slope > 0 && slope < 1)
+  {
+    float y = y1;
+    float e = 0.0; 
+
+    for (float x = x1; x <= x2; x++)
+    {
+      insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+
+      e += slope;
+
+      if (e >= 0.5)
+      {
+        y++;
+        e = e - 1.0;
+      }
+    }
+  }
+  else if (slope < 0 && slope >= -1)
+  {
+    float y = y1;
+    float e = 0.0; 
+
+    if (x1 < x2)
+    {
+      for (float x = x1; x <= x2; x++)
+      {
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+
+        e += abs(slope);
+
+        if (e >= 0.5)
+        {
+          y--;
+          e = e - 1.0;
+        }
+      }
+    }
+    else
+    {
+      for (float x = x1; x >= x2; x--)
+      {
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+
+        e += abs(slope);
+
+        if (e >= 0.5)
+        {
+          y++;
+          e = e - 1.0;
+        }
+      }
+    }
+  }
+  else if (slope >= 1)
+  {
+    float x = x1;
+    float e = 0.0; 
+
+    for (float y = y1; y <= y2; y++)
+    {
+      insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+
+      e += slope2;
+
+      if (e >= 0.5)
+      {
+        x++;
+        e = e - 1.0;
+      }
+    }
+  }
+  else if (slope <= -1)
+  {
+    float x = x1;
+    float e = 0.0; 
+
+    if (y2 < y1)
+    {
+      for (float y = y1; y >= y2; y--)
+      {
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+
+        e += abs(slope2);
+
+        if (e >= 0.5)
+        {
+          x++;
+          e = e - 1.0;
+        }
+      }
+    }
+    else
+    {
+      for (float y = y1; y <= y2; y++)
+      {
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false));
+
+        e += abs(slope2);
+
+        if (e >= 0.5)
+        {
+          x--;
+          e = e - 1.0;
+        }
+      }
+
+    }
+  }
+
+
 }
 
 void Polygon::translate(Point p)
 {
   float x1 = centroid.x;
   float y1 = centroid.y;
-  
+
   float x2 = p.x;
   float y2 = p.y;
 
@@ -280,6 +400,7 @@ void Polygon::translate(Point p)
   centroid.y += dy;
 
   edges.clear();
+  edgesSortedByY.clear();
   for (it = newEdges.begin(); it != newEdges.end(); it++)
   {
     insertEdgePoint(it->first, it->second);
@@ -291,7 +412,7 @@ void Polygon::scale(float dx, float dy)
 {
   if (dx == 0 && dy == 0)
     return;
-  
+
   // translate to origin
   Point oldPoint(centroid.x, centroid.y);
 
@@ -304,6 +425,7 @@ void Polygon::scale(float dx, float dy)
   }
 
   edges.clear();
+  edgesSortedByY.clear();
   calculateEdges(true);
 
   translate(oldPoint);
@@ -326,18 +448,12 @@ void Polygon::rotate(float angle)
 
   translate(Point(0.0, 0.0));
 
-  cout << "angle: " << angle << endl;
-
   for (int i = 0; i < numVertices; i++)
   {
     float angleInRadians = toRadians(angle);
 
-    cout << "angle in radians: " << angleInRadians << endl;
-
     float x = vertices[i]->x;
     float y = vertices[i]->y;
-
-    cout << "x: " << x << ", " << y << endl;
 
     float costheta = cos(angleInRadians);
     float sintheta = sin(angleInRadians);
@@ -347,6 +463,7 @@ void Polygon::rotate(float angle)
   }
 
   edges.clear();
+  edgesSortedByY.clear();
   calculateEdges(true);
 
   translate(oldPoint);
@@ -358,6 +475,6 @@ void Polygon::displayEdges()
   map<Point, PointInfo>::iterator it;
   for (it = edges.begin(); it != edges.end(); it++)
   {
-    cout << it->first.x << ", " << it->first.y << ", horiz: " << it->second.partOfHorizontal << endl;
+    cout << it->first.x << ", " << it->first.y << ", horiz: " << it->second.partOfHorizontal << ", extrema: " << it->second.extrema << endl;
   }
 }

@@ -38,6 +38,7 @@ class Polygon
     string description;
     vector<Point *> vertices;
     map<Point, PointInfo, PointComparator> edges;
+    map<Point, PointInfo, PointComparatorY> edgesSortedByY;
     Point centroid;
 
     

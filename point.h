@@ -33,3 +33,21 @@ struct PointComparator
       return false;
   }
 };
+
+struct PointComparatorY
+{
+  bool operator()(const Point& a, const Point& b)
+  {
+    if (a.y == b.y)
+    {
+      if (a.x < b.x)
+        return true;
+      else
+        return false;
+    }
+    else if (a.y < b.y)
+      return true;
+    else
+      return false;
+  }
+};
