@@ -75,7 +75,7 @@ void idle();
 void display();
 void rasterize();
 void save();
-void draw_pix(int x, int y, bool drawingViewport, tuple<int, int, int> color);
+void draw_pix(int x, int y, int z, bool drawingViewport, tuple<int, int, int> color);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
 void specialKey(int key, int x, int y);
@@ -183,20 +183,51 @@ void processDatFile()
     // loop through every vertex
     for (int j = 0; j < numVertices; j++)
     {
+      // separate each line into three points
       getline(rawDatFile, line);
-      int pos = line.find_first_of(" ");
+      size_t pos = line.find_first_of(" ");
+      size_t pos2;
+
       string rawX = line.substr(0, pos);
-      string rawY = line.substr(pos, string::npos);
+
+      pos++;
+      pos2 = line.find_first_of(" ", pos);
+
+      string rawY = line.substr(pos, pos2);
+
+      string rawZ = line.substr(pos2, string::npos);
 
       float x = atof(rawX.c_str());
       float y = atof(rawY.c_str());
+      float z = atof(rawZ.c_str());
 
       // add vertex to polygon
-      Point *p = new Point(x, y);
+      Point *p = new Point(x, y, z);
       polygon->vertices.push_back(p);
 
 
     }
+
+    // get number of edges
+    getline(rawDatFile, line);
+    int numEdges = atoi(line.c_str());
+    polygon->numEdges = numEdges;
+
+    for (int j = 0; j < numEdges; j++)
+    {
+      getline(rawDatFile, line);
+      size_t pos = line.find_first_of(" ");
+
+      string rawEdge1 = line.substr(0, pos);
+      string rawEdge2 = line.substr(pos, string::npos);
+
+      int edge1 = atoi(rawEdge1.c_str());
+      int edge2 = atoi(rawEdge2.c_str());
+
+      polygon->edgeOrder.push_back(pair<int, int>(edge1 - 1, edge2 - 1));
+
+    }
+
 
     polygon->calculateCentroid();
     if (useDDA)
@@ -205,34 +236,10 @@ void processDatFile()
       polygon->calculateEdges(false);
 
     polygons.push_back(polygon);
-
-    // pretty sure this isn't necessary, remove after confirming
-    map<Point, PointInfo>::iterator it;
-    for (it = polygon->edges.begin(); it != polygon->edges.end(); it++)
-    {
-      //edges.insert(pair<Point, PointInfo>(it->first, it->second));
-    }
-
+    
   }
 
 }
-
-/*void recalculateRasterizedEdges()
-{
-  for (int i = 0; i < numPolygons; i++)
-  {
-    Polygon *polygon = polygons[i];
-    edges.clear();
-
-    map<Point, PointInfo>::iterator it;
-    for (it = polygon->edges.begin(); it != polygon->edges.end(); it++)
-    {
-      edges.insert(pair<Point, PointInfo>(it->first, it->second));
-    }
-
-
-  }
-}*/
 
 /*initialize gl stufff*/
 void init()
@@ -267,19 +274,20 @@ void display()
     {
       float x = polygon->vertices[i]->x;
       float y = polygon->vertices[i]->y;
+      float z = polygon->vertices[i]->z;
 
-      draw_pix(x, y, false, black);
+      draw_pix(x, y, z, false, black);
     }
 
     map<Point, PointInfo>::iterator it2;
-    for (it2 = polygon->edges.begin(); it2 != polygon->edges.end(); it2++)
+    for (it2 = polygon->edgesXY.begin(); it2 != polygon->edgesXY.end(); it2++)
     {
-      draw_pix(it2->first.x, it2->first.y, false, black);
+      draw_pix(it2->first.x, it2->first.y, it2->first.z, false, black);
     }
 
   }
 
-  rasterize();
+  //rasterize();
 
   //blits the current opengl framebuffer on the screen
   glutSwapBuffers();
@@ -287,19 +295,19 @@ void display()
   check();
 }
 
-void rasterize()
+/*void rasterize()
 {
   rasterizedPoints.clear();
   // draw viewport
   for (int i = viewport[0]; i < (viewport[2] + 1); i++)
   {
-    draw_pix(i, viewport[1], true, green);
-    draw_pix(i, viewport[3], true, green);
+    draw_pix(i, viewport[1], 0, true, green);
+    draw_pix(i, viewport[3], 0, true, green);
   }
   for (int i = viewport[1]; i < viewport[3]; i++)
   {
-    draw_pix(viewport[0], i, true, green);
-    draw_pix(viewport[2], i, true, green);
+    draw_pix(viewport[0], 0, i, true, green);
+    draw_pix(viewport[2], 0, i, true, green);
   }
 
   // for every polygon, fill it in via horizontal scan lines
@@ -322,13 +330,13 @@ void rasterize()
         // find the floating point edge given an integer point
         findIt = (*it)->findApproxPoint(i, j);
 
-        if (findIt != (*it)->edges.end())
+        if (findIt != (*it)->edgesXY.end())
         {
           if (i == (previousX + 1))
           {
             bool nextPointExists = false;
             map<Point, PointInfo>::iterator it2;
-            for (it2 = (*it)->edges.begin(); it2 != (*it)->edges.end(); it2++)
+            for (it2 = (*it)->edgesXY.begin(); it2 != (*it)->edgesXY.end(); it2++)
             {
               if (((int)it2->first.y == 79 && j == 79))
               {
@@ -348,13 +356,13 @@ void rasterize()
             continue;
 
           }
-            
+
           if (findIt->second.partOfHorizontal == true)
           {
             on = false;
             continue;
           }
-          
+
           previousX = i;
           // as long as it's not an extrema, flip the on bit
           // to start drawing or stop drawing
@@ -370,20 +378,20 @@ void rasterize()
           if (polygonIndex == currentPolygonIndex)
           {
             if (scaleTurnedOn)
-              draw_pix(i, j, false, green);
+              draw_pix(i, j, 0, false, green);
             else if (rotateTurnedOn)
             {
-              draw_pix(i,j, false, blue);
+              draw_pix(i,j, 0, false, blue);
             }
             else
-              draw_pix(i, j, false, red);
+              draw_pix(i, j, 0, false, red);
           }
           else
-            draw_pix(i, j, false, black);
+            draw_pix(i, j, 0, false, black);
           // keep track of rasterized points for mouse interactions
           rasterizedPoints.insert(pair<Point, int>(Point(i, j), polygonIndex));
         }
-        
+
       }
       on = false;
 
@@ -393,11 +401,11 @@ void rasterize()
     polygonIndex++;
   }
 
-}
+}*/
 
 void save()
 {
-  
+
   ofstream file;
   file.open(filename);
   file << numPolygons << "\n";
@@ -423,7 +431,7 @@ void save()
 
 //Draws a single "pixel" given the current grid size
 //don't change anything in this for project 1
-void draw_pix(int x, int y, bool drawingViewPort, tuple<int, int, int> color){
+void draw_pix(int x, int y, int z, bool drawingViewPort, tuple<int, int, int> color){
   bool pixInside=((viewport[0] < x && x < viewport[2]) && (viewport[1] < y && y < viewport[3]));
 
   if (pixInside || drawingViewPort)
@@ -486,10 +494,7 @@ void key(unsigned char ch, int x, int y)
   {
     save();
   }
-  else if ((int)ch > 0)
-  {
-    currentPolygonIndex = (int)ch - '0' - 1;
-  }
+
   else if (ch == '+' || ch == '=')
   {
     if (scaleTurnedOn)
@@ -516,7 +521,11 @@ void key(unsigned char ch, int x, int y)
       rasterizedPoints.clear();
     }
   }
- //redraw the scene after keyboard input
+  else if ((int)ch > 0)
+  {
+    currentPolygonIndex = (int)ch - '0' - 1;
+  }
+  //redraw the scene after keyboard input
   glutPostRedisplay();
 }
 
@@ -647,7 +656,7 @@ void motion(int x, int y)
     rasterizedPoints.clear();
     //redraw the scene after mouse movement
   }
- 
+
   glutPostRedisplay();
 }
 

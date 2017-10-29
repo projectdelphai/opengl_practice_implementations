@@ -1,3 +1,4 @@
+#include <utility>
 #include <iostream>
 #include <vector>
 #include <map>
@@ -12,7 +13,7 @@ class Polygon
     void display();
     void updateYMin(int y);
     void updateYMax(int y);
-    void insertEdgePoint(Point p, PointInfo pi);
+    void insertXYEdgePoint(Point p, PointInfo pi);
     void displayEdges();
     void calculateCentroid();
     void calculateEdges(bool useDDA);
@@ -37,12 +38,17 @@ class Polygon
 
     string description;
     vector<Point *> vertices;
-    map<Point, PointInfo, PointComparator> edges;
+    vector<pair<int, int>> edgeOrder;
+
+    map<Point, PointInfo, PointComparator> edgesXY;
+    map<Point, PointInfo, PointComparator> edgesXZ;
+    map<Point, PointInfo, PointComparator> edgesYZ;
     map<Point, PointInfo, PointComparatorY> edgesSortedByY;
     Point centroid;
 
     
     int numVertices;
+    int numEdges;
     float yMin;
     float yMax;
 
