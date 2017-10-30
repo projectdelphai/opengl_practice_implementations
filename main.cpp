@@ -46,15 +46,18 @@ int win_width;
 
 // vector of polygons to display from file
 vector<Polygon *> polygons;
-map<Point, PointInfo, PointComparator> edges;
 map<Point, int, PointComparator> rasterizedPoints;
 
 bool useDDA = false;
-bool useBresenham = true;
+bool useBresenham = false;
+bool useglLine = true;
 bool scaleTurnedOn = false;
 bool rotateTurnedOn = false;
 bool leftButtonUsed = false;
 bool rightButtonUsed = false;
+bool XY = true;
+bool XZ = false;
+bool YZ = false;
 
 int method = 1;
 int numPolygons;
@@ -76,6 +79,7 @@ void display();
 void rasterize();
 void save();
 void draw_pix(int x, int y, int z, bool drawingViewport, tuple<int, int, int> color);
+void draw_lines(Point p1, Point p2, tuple<int, int, int> color);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
 void specialKey(int key, int x, int y);
@@ -88,22 +92,24 @@ void check();
 int main(int argc, char **argv)
 {
   filename = argv[1];
-  method = atoi(argv[2]);
 
-  if (method == 1)
+  if (argc == 3)
   {
-    useDDA = true;
-    useBresenham = false;
-  }
-  else if (method == 2)
-  {
-    useDDA = false;
-    useBresenham = true;
+    method = atoi(argv[2]);
+
+    if (method == 1)
+    {
+      useDDA = true;
+    }
+    else if (method == 2)
+    {
+      useBresenham = true;
+    }
   }
 
   //the number of pixels in the grid
-  grid_width = 100;
-  grid_height = 100;
+  grid_width = 500;
+  grid_height = 500;
 
   // viewport[xmin, ymin, xmax, ymax]
   viewport[0] = -1;
@@ -115,7 +121,7 @@ int main(int argc, char **argv)
   //the size of pixels sets the inital window height and width
   //don't make the pixels too large or the screen size will be larger than
   //your display size
-  pixel_size = 5;
+  pixel_size = 2;
 
   /*Window information*/
   win_height = grid_height*pixel_size;
@@ -132,7 +138,7 @@ int main(int argc, char **argv)
   //create window of size (win_width x win_height
   glutInitWindowSize(win_width,win_height);
   //windown title is "glut demo"
-  glutCreateWindow("Project 1");
+  glutCreateWindow("Project 2");
 
   /*defined glut callback functions*/
   glutDisplayFunc(display); //rendering calls here
@@ -230,13 +236,8 @@ void processDatFile()
 
 
     polygon->calculateCentroid();
-    if (useDDA)
-      polygon->calculateEdges(true);
-    else
-      polygon->calculateEdges(false);
+   polygons.push_back(polygon);
 
-    polygons.push_back(polygon);
-    
   }
 
 }
@@ -265,27 +266,40 @@ void display()
   //clears the opengl Modelview transformation matrix
   glLoadIdentity();
 
+  int i = 0;
   // for every polygon, draw it out
   for (vector<Polygon *>::iterator it = polygons.begin(); it != polygons.end(); it++)
   {
     Polygon *polygon = *it;
-    int numVertices = polygon->numVertices;
-    for (int i = 0; i < numVertices; i++)
-    {
-      float x = polygon->vertices[i]->x;
-      float y = polygon->vertices[i]->y;
-      float z = polygon->vertices[i]->z;
+    map<Point, PointInfo, PointComparator> edges;
 
-      draw_pix(x, y, z, false, black);
+    tuple<int, int, int> color = black;
+
+    if (scaleTurnedOn && (i == currentPolygonIndex))
+      color = red;
+
+
+    for (int edgeOrderIndex = 0; edgeOrderIndex < polygon->numEdges; edgeOrderIndex++)
+    {
+      int indexA = polygon->edgeOrder[edgeOrderIndex].first;
+      int indexB = polygon->edgeOrder[edgeOrderIndex].second;
+
+      Point *p1 = polygon->vertices[indexA];
+      Point *p2 = polygon->vertices[indexB];
+
+      // XY
+      draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), color);
+      // XZ
+      draw_lines(Point(p1->x+1, p1->z+1), Point(p2->x+1, p2->z+1), color);
+      // YZ
+      draw_lines(Point(p1->y, p1->z), Point(p2->y, p2->z), color);
+
+
     }
 
-    map<Point, PointInfo>::iterator it2;
-    for (it2 = polygon->edgesXY.begin(); it2 != polygon->edgesXY.end(); it2++)
-    {
-      draw_pix(it2->first.x, it2->first.y, it2->first.z, false, black);
-    }
-
+    i++;
   }
+
 
   //rasterize();
 
@@ -295,7 +309,7 @@ void display()
   check();
 }
 
-/*void rasterize()
+void rasterize()
 {
   rasterizedPoints.clear();
   // draw viewport
@@ -401,7 +415,7 @@ void display()
     polygonIndex++;
   }
 
-}*/
+}
 
 void save()
 {
@@ -416,7 +430,7 @@ void save()
     file << polygons[i]->numVertices << "\n";
     for (int j = 0; j < polygons[i]->numVertices; j++)
     {
-      file << polygons[i]->vertices[j]->x << " " << polygons[i]->vertices[j]->y << '\n';
+      file << (polygons[i]->vertices[j]->x / 100) << " " << (polygons[i]->vertices[j]->y / 100) << '\n';
     }
   }
 
@@ -438,9 +452,32 @@ void draw_pix(int x, int y, int z, bool drawingViewPort, tuple<int, int, int> co
   {
     glBegin(GL_POINTS);
     glColor3f(get<0>(color),get<1>(color),get<2>(color));
-    glVertex3f(x+.5,y+.5,0);
+
+    glVertex3f(x + .5, y + .5, z + .5);
+
+
+
     glEnd();
   }
+}
+
+void draw_lines(Point p1, Point p2, tuple<int, int, int> color){
+  glLineWidth(2.0); //sets the "width" of each line we are rendering
+
+  //tells opengl to interperate every two calls to glVertex as a line
+  glBegin(GL_LINES);
+  //first line will be blue    
+  glColor3f(get<0>(color),get<1>(color),get<2>(color));
+  glVertex2f(p1.x, p1.y);
+  glVertex2f(p2.x,p2.y);
+
+  //this will be a red line
+  //notice we can use 3d points too
+  //how will this change if we project to the XZ or YZ plane?
+  //glColor3f(1.0,0.0,0.0);
+  //glVertex3f(0.1,0.9,0.5);
+  //glVertex3f(0.9,0.1,0.3);
+  glEnd();
 }
 
 /*Gets called when display size changes, including initial craetion of the display*/
@@ -457,7 +494,7 @@ void reshape(int width, int height)
   // the pixel space is mapped to the grid space
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(0,grid_width,0,grid_height,-10,10);
+  glOrtho(0,2,0,2,-10,10);
 
   //clear the modelview matrix
   glMatrixMode(GL_MODELVIEW);
@@ -492,14 +529,14 @@ void key(unsigned char ch, int x, int y)
   }
   else if (ch == 'q')
   {
-    save();
+    //save();
   }
 
   else if (ch == '+' || ch == '=')
   {
     if (scaleTurnedOn)
     {
-      polygons[currentPolygonIndex]->scale(1.05, 1.05);
+      polygons[currentPolygonIndex]->scale(1.05, 1.05, 1.05);
       rasterizedPoints.clear();
     }
     else if (rotateTurnedOn)
@@ -512,7 +549,7 @@ void key(unsigned char ch, int x, int y)
   {
     if (scaleTurnedOn)
     {
-      polygons[currentPolygonIndex]->scale(.9, .9);
+      polygons[currentPolygonIndex]->scale(.9, .9, .9);
       rasterizedPoints.clear();
     }
     else if (rotateTurnedOn)
@@ -535,19 +572,19 @@ void specialKey(int key, int x, int y)
   float centery = polygons[currentPolygonIndex]->centroid.y;
   if (key == GLUT_KEY_RIGHT)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx + 1, centery));
+    polygons[currentPolygonIndex]->translate(Point(centerx + .1, centery));
   }
   else if (key == GLUT_KEY_LEFT)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx - 1, centery));
+    polygons[currentPolygonIndex]->translate(Point(centerx - .1, centery));
   }
   else if (key == GLUT_KEY_UP)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx, centery + 1));
+    polygons[currentPolygonIndex]->translate(Point(centerx, centery + .1));
   }
   else if (key == GLUT_KEY_DOWN)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx, centery - 1));
+    polygons[currentPolygonIndex]->translate(Point(centerx, centery - .1));
   }
 }
 
@@ -579,6 +616,7 @@ void mouse(int button, int state, int x, int y)
   {
     if (leftButtonUsed)
     {
+      /*
       int selectedX = (int)(x/pixel_size);
       int selectedY = (int)((win_height-y)/pixel_size);
 
@@ -592,10 +630,11 @@ void mouse(int button, int state, int x, int y)
           currentPolygonIndex = ret->second;
           break;
         }
-      }
+      }*/
     }
     else if (rightButtonUsed)
     {
+      /*
       int x2 = (int)(x/pixel_size);
       int y2 = (int)((win_height-y)/pixel_size);
 
@@ -637,6 +676,7 @@ void mouse(int button, int state, int x, int y)
       }
 
       cout << viewport[0] << ", " << viewport[1] << ", " << viewport[2] << ", " << viewport[3] << endl;
+      */
 
     }
   }

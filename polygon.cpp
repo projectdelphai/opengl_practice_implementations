@@ -36,15 +36,30 @@ void Polygon::updateYMax(int y)
     yMax = y;
 }
 
-void Polygon::insertXYEdgePoint(Point p, PointInfo pi)
+void Polygon::insertEdgePoint(Point p, PointInfo pi, int plane)
 {
   pair<map<Point, PointInfo>::iterator, bool> ret;
-  ret = edgesXY.insert(pair<Point, PointInfo>(p, pi));
+  
+  if (plane == 0) // XY
+    ret = edgesXY.insert(pair<Point, PointInfo>(p, pi));
+  else if (plane == 1) //XZ
+  {
+    ret = edgesXZ.insert(pair<Point, PointInfo>(p, pi));
+  }
+  else if (plane == 2) // YZ
+    ret = edgesYZ.insert(pair<Point, PointInfo>(p, pi));
+
   edgesSortedByY.insert(pair<Point, PointInfo>(p, pi));
 
   if (ret.second == false)
   {
-    map<Point, PointInfo>::iterator it = edgesXY.find(p);
+    map<Point, PointInfo>::iterator it;
+    if (plane == 0) // XY
+      it = edgesXY.find(p);
+    else if (plane == 1) //XZ
+      it = edgesXZ.find(p);
+    else if (plane == 2) // YZ
+      it = edgesYZ.find(p);
     if (pi.partOfHorizontal == true && it->second.partOfHorizontal == false)
       it->second.partOfHorizontal = true;
   }
@@ -80,62 +95,88 @@ void Polygon::calculateCentroid()
 {
   float sumx = 0;
   float sumy = 0;
+  float sumz = 0;
+
   // simple method though not as accurate
   for (int i = 0; i < numVertices; i++)
   {
     sumx = sumx + vertices[i]->x;
     sumy = sumy + vertices[i]->y;
+    sumz = sumz + vertices[i]->z;
   }
 
   float averagex = sumx / numVertices;
   float averagey = sumy / numVertices;
+  float averagez = sumz / numVertices;
 
   centroid.x = averagex;
   centroid.y = averagey;
+  centroid.z = averagez;
 
 }
 
 
 void Polygon::calculateEdges(bool useDDA)
 {
-  for (int edgeOrderIndex = 0; edgeOrderIndex < numEdges; edgeOrderIndex++)
+  for (int i = 0; i < 3; i++)
   {
-    int indexA = edgeOrder[edgeOrderIndex].first;
-    int indexB = edgeOrder[edgeOrderIndex].second;
-
-    cout << indexA << ", " << indexB << endl;
-
-    Point *p1 = vertices[indexA];
-    Point *p2 = vertices[indexB];
-
-    float x1 = p1->x;
-    float y1 = p1->y;
-    float x2 = p2->x;
-    float y2 = p2->y;
-
-    // check if new min/max found
-    updateYMin(y1);
-    updateYMin(y2);
-    updateYMax(y1);
-    updateYMax(y2);
-
-    // fill in every pixel (x1, y1->y2)
-    if (x1 == x2)
-      drawVerticalLine(x1, y1, y2);
-    // fill in every pixel (x1 -> x2, y1)
-    else if (y1 == y2)
-      drawHorizontalLine(x1, x2, y1);
-    else
+    for (int edgeOrderIndex = 0; edgeOrderIndex < numEdges; edgeOrderIndex++)
     {
-      if (useDDA == true)
-        drawDiagonalViaDDA(x1, x2, y1, y2);
+      int indexA = edgeOrder[edgeOrderIndex].first;
+      int indexB = edgeOrder[edgeOrderIndex].second;
+
+      Point *p1 = vertices[indexA];
+      Point *p2 = vertices[indexB];
+
+      float x1, y1, x2, y2;
+      if (i == 0) // XY
+      {
+        x1 = p1->x;
+        y1 = p1->y;
+        x2 = p2->x;
+        y2 = p2->y;
+
+      }
+      else if (i == 1) // XZ
+      {
+        x1 = p1->x;
+        y1 = p1->z;
+        x2 = p2->x;
+        y2 = p2->z;
+        
+      }
+      else if (i == 2) // YZ
+      {
+        x1 = p1->y;
+        y1 = p1->z;
+        x2 = p2->y;
+        y2 = p2->z;
+      }
+
+      // check if new min/max found
+      updateYMin(y1);
+      updateYMin(y2);
+      updateYMax(y1);
+      updateYMax(y2);
+
+      // fill in every pixel (x1, y1->y2)
+      if (x1 == x2)
+        drawVerticalLine(x1, y1, y2, i);
+      // fill in every pixel (x1 -> x2, y1)
+      else if (y1 == y2)
+        drawHorizontalLine(x1, x2, y1, i);
       else
-        drawDiagonalViaBresenham(x1, x2, y1, y2);
+      {
+        if (useDDA == true)
+          drawDiagonalViaDDA(x1, x2, y1, y2, i);
+        else
+          drawDiagonalViaBresenham(x1, x2, y1, y2, i);
+      }
+
     }
 
+    markVerticesAndExtrema();
   }
-
-  markVerticesAndExtrema();
 
   //display();
 
@@ -180,41 +221,41 @@ void Polygon::markVerticesAndExtrema()
   }
 }
 
-void Polygon::drawHorizontalLine(float x1, float x2, float y1)
+void Polygon::drawHorizontalLine(float x1, float x2, float y1, int plane)
 {
   // draw horizontal line to the right
   if (x1 < x2)
   {
     for (float x = x1; x < (x2 + 1); x++)
-      insertXYEdgePoint(Point(x, y1), PointInfo(true, false, false));
+      insertEdgePoint(Point(x, y1), PointInfo(true, false, false), plane);
   }
   // draw horizontal line to the left
   else
   {
     for (float x = x1; x > (x2 - 1); x--)
     {
-      insertXYEdgePoint(Point(x, y1), PointInfo(true, false, false));
+      insertEdgePoint(Point(x, y1), PointInfo(true, false, false), plane);
     }
   }
 }
 
-void Polygon::drawVerticalLine(float x1, float y1, float y2)
+void Polygon::drawVerticalLine(float x1, float y1, float y2, int plane)
 {
   // draw vertical line upwards
   if (y1 < y2)
   {
     for (float y = y1; y < (y2 + 1); y++)
-      insertXYEdgePoint(Point(x1, y), PointInfo(false, false, false));
+      insertEdgePoint(Point(x1, y), PointInfo(false, false, false), plane);
   }
   // draw vertical line downwards
   else
   {
     for (float y = y1; y > (y2 - 1); y--)
-      insertXYEdgePoint(Point(x1, y), PointInfo(false, false, false));
+      insertEdgePoint(Point(x1, y), PointInfo(false, false, false), plane);
   }
 }
 
-void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2)
+void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2, int plane)
 {
   float dx = x2 - x1;
   float dy = y2 - y1;
@@ -232,21 +273,21 @@ void Polygon::drawDiagonalViaDDA(float x1, float x2, float y1, float y2)
   float x = x1;
   float y = y1;
 
-  insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+  insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
   for (int i = 0; i < (int)increment; i++)
   {
     x = x + xIncrement;
     y = y + yIncrement;
 
-    insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+    insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
   }
 }
 
-void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
+void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2, int plane)
 {
   if (x2 < x1 && y2 < y1)
-    drawDiagonalViaBresenham(x2, x1, y2, y1);
+    drawDiagonalViaBresenham(x2, x1, y2, y1, plane);
 
   float dx = x2 - x1;
   float dy = y2 - y1;
@@ -260,7 +301,7 @@ void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
 
     for (float x = x1; x <= x2; x++)
     {
-      insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+      insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
       e += slope;
 
@@ -280,7 +321,7 @@ void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
     {
       for (float x = x1; x <= x2; x++)
       {
-        insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
         e += abs(slope);
 
@@ -295,7 +336,7 @@ void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
     {
       for (float x = x1; x >= x2; x--)
       {
-        insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
         e += abs(slope);
 
@@ -314,7 +355,7 @@ void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
 
     for (float y = y1; y <= y2; y++)
     {
-      insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+      insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
       e += slope2;
 
@@ -334,7 +375,7 @@ void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
     {
       for (float y = y1; y >= y2; y--)
       {
-        insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
         e += abs(slope2);
 
@@ -349,7 +390,7 @@ void Polygon::drawDiagonalViaBresenham(float x1, float x2, float y1, float y2)
     {
       for (float y = y1; y <= y2; y++)
       {
-        insertXYEdgePoint(Point(x, y), PointInfo(false, false, false));
+        insertEdgePoint(Point(x, y), PointInfo(false, false, false), plane);
 
         e += abs(slope2);
 
@@ -370,43 +411,34 @@ void Polygon::translate(Point p)
 {
   float x1 = centroid.x;
   float y1 = centroid.y;
+  float z1 = centroid.z;
 
   float x2 = p.x;
   float y2 = p.y;
+  float z2 = p.z;
 
   float dx = x2 - x1;
   float dy = y2 - y1;
+  float dz = z2 - z1;
 
   for (int i = 0; i < numVertices; i++)
   {
     vertices[i]->x += dx;
     vertices[i]->y += dy;
-  }
-
-  map<Point, PointInfo, PointComparator> newEdges;
-  map<Point, PointInfo>::iterator it;
-  for (it = edgesXY.begin(); it != edgesXY.end(); it++)
-  {
-    float newX = it->first.x + dx;
-    float newY = it->first.y + dy;
-
-    newEdges.insert(pair<Point, PointInfo>(Point(newX, newY), it->second));
-
+    vertices[i]->z += dz;
   }
 
   centroid.x += dx;
   centroid.y += dy;
+  centroid.z += dz;
 
   edgesXY.clear();
   edgesSortedByY.clear();
-  for (it = newEdges.begin(); it != newEdges.end(); it++)
-  {
-    insertXYEdgePoint(it->first, it->second);
-  }
+  calculateEdges(true);
 
 }
 
-void Polygon::scale(float dx, float dy)
+void Polygon::scale(float dx, float dy, float dz)
 {
   if (dx == 0 && dy == 0)
     return;
@@ -420,6 +452,7 @@ void Polygon::scale(float dx, float dy)
   {
     vertices[i]->x *= dx;
     vertices[i]->y *= dy;
+    vertices[i]->z *= dz;
   }
 
   edgesXY.clear();

@@ -13,19 +13,19 @@ class Polygon
     void display();
     void updateYMin(int y);
     void updateYMax(int y);
-    void insertXYEdgePoint(Point p, PointInfo pi);
+    void insertEdgePoint(Point p, PointInfo pi, int plane);
     void displayEdges();
     void calculateCentroid();
     void calculateEdges(bool useDDA);
     void markVerticesAndExtrema();
-    void drawHorizontalLine(float x1, float x2, float y1);
-    void drawVerticalLine(float x1, float x2, float y1);
-    void drawDiagonalViaDDA(float x1, float x2, float y1, float y2);
-    void drawDiagonalViaBresenham(float x1, float x2, float y1, float y2);
+    void drawHorizontalLine(float x1, float x2, float y1, int plane);
+    void drawVerticalLine(float x1, float x2, float y1, int plane);
+    void drawDiagonalViaDDA(float x1, float x2, float y1, float y2, int plane);
+    void drawDiagonalViaBresenham(float x1, float x2, float y1, float y2, int plane);
 
     // transformations
     void translate(Point p);
-    void scale(float dx, float dy);
+    void scale(float dx, float dy, float dz);
     void rotate(float angle);
     
     float toRadians(float degrees);
