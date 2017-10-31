@@ -274,6 +274,22 @@ void display()
   for (vector<Polygon *>::iterator it = polygons.begin(); it != polygons.end(); it++)
   {
     Polygon *polygon = *it;
+    
+    bool insideViewPort = true;
+    for (int j = 0; j < polygon[i].numVertices; j++)
+    {
+      float x = polygon[i].vertices[j]->x;
+      float y = polygon[i].vertices[j]->y;
+
+      if ((x < 0 || x > 1) || (y < 0 || y > 1))
+      {
+        insideViewPort = false;
+      }
+    }
+
+    if (!insideViewPort)
+      continue;
+
     map<Point, PointInfo, PointComparator> edges;
 
     tuple<int, int, int> color = black;
@@ -442,7 +458,7 @@ void save()
     file << polygons[i]->numEdges << "\n";
     for (int j = 0; j < polygons[i]->numEdges; j++)
     {
-      file << (polygons[i]->edgeOrder[j].first) << " " << (polygons[i]->edgeOrder[j].second) << "\n";
+      file << (polygons[i]->edgeOrder[j].first+1) << " " << (polygons[i]->edgeOrder[j].second+1) << "\n";
     }
   }
 
