@@ -65,6 +65,9 @@ int method = 1;
 int numPolygons;
 int currentPolygonIndex = 0;
 
+Point rotatep1 = Point(0.0, 0.0, 0.0);
+Point rotatep2 = Point(0.0, 0.0, 0.0);
+
 // viewport
 int viewport[4];
 tuple<float, float, float> blue(.2, .2, 1.0);
@@ -82,7 +85,7 @@ void display();
 void rasterize();
 void save();
 void draw_pix(int x, int y, int z, bool drawingViewport, tuple<int, int, int> color);
-void draw_lines(Point p1, Point p2, tuple<int, int, int> color);
+void draw_lines(Point p1, Point p2, int viewPort, tuple<int, int, int> color);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
 void specialKey(int key, int x, int y);
@@ -274,24 +277,6 @@ void display()
   for (vector<Polygon *>::iterator it = polygons.begin(); it != polygons.end(); it++)
   {
     Polygon *polygon = *it;
-    
-    bool insideViewPort = true;
-    for (int j = 0; j < polygon[i].numVertices; j++)
-    {
-      float x = polygon[i].vertices[j]->x;
-      float y = polygon[i].vertices[j]->y;
-
-      if ((x < 0 || x > 1) || (y < 0 || y > 1))
-      {
-        insideViewPort = false;
-      }
-    }
-
-    if (!insideViewPort)
-      continue;
-
-    map<Point, PointInfo, PointComparator> edges;
-
     tuple<int, int, int> color = black;
 
     if (i == currentPolygonIndex)
@@ -311,17 +296,36 @@ void display()
       Point *p2 = polygon->vertices[indexB];
 
       // XY
-      draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), color);
+      draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
       // XZ
-      draw_lines(Point(p1->x+1, p1->z+1), Point(p2->x+1, p2->z+1), color);
+      draw_lines(Point(p1->x+1, p1->z+1), Point(p2->x+1, p2->z+1), 2, color);
       // YZ
-      draw_lines(Point(p1->y, p1->z), Point(p2->y, p2->z), color);
+      draw_lines(Point(p1->y, p1->z), Point(p2->y, p2->z), 3, color);
 
+      // OBLIQUE
+      float degrees = 45;
+      float angleInRadians = (degrees * M_PI) / 180;
+      float x1 = p1->x + .5 * p1->z * cos(angleInRadians);
+      float y1 = p1->y + .5 * p1->z * sin(angleInRadians);
+
+      float x2 = p2->x + .5 * p2->z * cos(angleInRadians);
+      float y2 = p2->y + .5 * p2->z * sin(angleInRadians);
+
+      draw_lines(Point(x1+1, y1), Point(x2+1, y2), 4, color);
 
     }
 
     i++;
   }
+
+  // XY
+  //draw_lines(Point(rotatep1.x, rotatep1.y+1), Point(rotatep2.x, rotatep2.y+1), 1, red);
+  // XZ
+  //draw_lines(Point(rotatep1.x+1, rotatep1.z+1), Point(rotatep2.x+1, rotatep2.z+1), 2, red);
+  // YZ
+  //draw_lines(Point(rotatep1.y, rotatep1.z), Point(rotatep2.y, rotatep2.z), 3, red);
+
+
 
 
   //rasterize();
@@ -489,23 +493,138 @@ void draw_pix(int x, int y, int z, bool drawingViewPort, tuple<int, int, int> co
   }
 }
 
-void draw_lines(Point p1, Point p2, tuple<int, int, int> color){
-  glLineWidth(2.0); //sets the "width" of each line we are rendering
+int computeCode(float x, float y, int xmin, int xmax, int ymin, int ymax)
+{
+  int code = 0;
 
-  //tells opengl to interperate every two calls to glVertex as a line
-  glBegin(GL_LINES);
-  //first line will be blue    
-  glColor3f(get<0>(color),get<1>(color),get<2>(color));
-  glVertex2f(p1.x, p1.y);
-  glVertex2f(p2.x,p2.y);
+  if (x < xmin) // too far left
+    code |= 1;
+  else if (x > xmax) // too far right
+    code |= 2;
+  if (y < ymin) // too far below
+    code |= 4;
+  else if (y > ymax) // too far above
+    code |= 8;
 
-  //this will be a red line
-  //notice we can use 3d points too
-  //how will this change if we project to the XZ or YZ plane?
-  //glColor3f(1.0,0.0,0.0);
-  //glVertex3f(0.1,0.9,0.5);
-  //glVertex3f(0.9,0.1,0.3);
-  glEnd();
+  return code;
+
+}
+void draw_lines(Point p1, Point p2, int viewPort, tuple<int, int, int> color)
+{
+  // Cohen-Sutherland code derived from 
+  // https://en.wikipedia.org/wiki/Cohen%E2%80%93Sutherland_algorithm
+  float xmin, xmax, ymin, ymax;
+
+  if (viewPort == 1)
+  {
+    xmin = 0;
+    xmax = 1;
+    ymin = 1;
+    ymax = 2;
+  }
+  else if (viewPort == 2)
+  {
+    xmin = 1;
+    xmax = 2;
+    ymin = 1;
+    ymax = 2;
+  }
+  else if (viewPort == 3)
+  {
+    xmin = 0;
+    xmax = 1;
+    ymin = 0;
+    ymax = 1;
+  }
+  else if (viewPort == 4)
+  {
+    xmin = 1;
+    xmax = 2;
+    ymin = 0;
+    ymax = 1;
+  }
+
+  int p1Code = computeCode(p1.x, p1.y, xmin, xmax, ymin, ymax);
+  int p2Code = computeCode(p2.x, p2.y, xmin, xmax, ymin, ymax);
+
+  float x1 = p1.x;
+  float x2 = p2.x;
+  float y1 = p1.y;
+  float y2 = p2.y;
+
+  bool accept = false;
+  while (true)
+  {
+    if (!(p1Code | p2Code))
+    {
+      accept = true;
+      break;
+    }
+    else if (p1Code & p2Code)
+    {
+      break;
+    }
+    else
+    {
+      float x, y;
+      int error = p1Code ? p1Code : p2Code;
+
+      if (error & 8) // top fix
+      {
+        x = x1 + (x2 - x1) * (ymax - x1) / (x2 - x1);
+        y = ymax;
+      }
+      else if (error & 4) // bottom fix
+      {
+        x = x1 + (x2 - x1) * (ymin - x1) / (x2 - x1);
+        y = ymin;
+      }
+      else if (error & 2) // right fix
+      {
+        x = xmax;
+        y = x1 + (x2 - x1) * (xmax - x1) / (x2 - x1);
+      }
+      else if (error & 1) // left fix
+      {
+        x = xmin;
+        y = x1 + (x2 - x1) * (xmin - x1) / (x2 - x1);
+      }
+
+      if (error == p1Code)
+      {
+        x1 = x;
+        y1 = y;
+        p1Code = computeCode(x1, y1, xmin, xmax, ymin, ymax);
+      }
+      else
+      {
+        x2 = x;
+        y2 = y;
+        p2Code = computeCode(x2, y2, xmin, xmax, ymin, ymax);
+      }
+    }
+  }
+
+  if (accept)
+  {
+
+    glLineWidth(2.0); //sets the "width" of each line we are rendering
+
+    //tells opengl to interperate every two calls to glVertex as a line
+    glBegin(GL_LINES);
+    //first line will be blue    
+    glColor3f(get<0>(color),get<1>(color),get<2>(color));
+    glVertex2f(p1.x, p1.y);
+    glVertex2f(p2.x,p2.y);
+
+    //this will be a red line
+    //notice we can use 3d points too
+    //how will this change if we project to the XZ or YZ plane?
+    //glColor3f(1.0,0.0,0.0);
+    //glVertex3f(0.1,0.9,0.5);
+    //glVertex3f(0.9,0.1,0.3);
+    glEnd();
+  }
 }
 
 /*Gets called when display size changes, including initial craetion of the display*/
@@ -554,7 +673,7 @@ void key(unsigned char ch, int x, int y)
     string x;
     cout << "Please enter point 1, point 2, and the rotation angle in the following format:" << endl;
     cout << "x1 y1 z1 x2 y2 z2 angle" << endl;
-    
+
     getline(cin, x);
     istringstream s(x);
     vector<string> components;
@@ -577,6 +696,9 @@ void key(unsigned char ch, int x, int y)
 
     polygons[currentPolygonIndex]->specialRotate(p1, p2, angle);
 
+    rotatep1 = p1;
+    rotatep2 = p2;
+
   }
   else if (ch == 'p')
   {
@@ -590,7 +712,7 @@ void key(unsigned char ch, int x, int y)
     {
       first_color = 0.0;
       second_color += 0.1;
-   }
+    }
     else if ((int)second_color == 1)
     {
       second_color = 0;
@@ -715,26 +837,26 @@ void mouse(int button, int state, int x, int y)
     if (leftButtonUsed)
     {
       /*
-      int selectedX = (int)(x/pixel_size);
-      int selectedY = (int)((win_height-y)/pixel_size);
+         int selectedX = (int)(x/pixel_size);
+         int selectedY = (int)((win_height-y)/pixel_size);
 
-      for (int i = 0; i < numPolygons; i++)
-      {
-        map<Point, int>::iterator ret;
-        ret = rasterizedPoints.find(Point(selectedX, selectedY));
+         for (int i = 0; i < numPolygons; i++)
+         {
+         map<Point, int>::iterator ret;
+         ret = rasterizedPoints.find(Point(selectedX, selectedY));
 
-        if (ret != rasterizedPoints.end())
-        {
-          currentPolygonIndex = ret->second;
-          break;
-        }
-      }*/
+         if (ret != rasterizedPoints.end())
+         {
+         currentPolygonIndex = ret->second;
+         break;
+         }
+         }*/
     }
     else if (rightButtonUsed)
     {
       /*
-      int x2 = (int)(x/pixel_size);
-      int y2 = (int)((win_height-y)/pixel_size);
+         int x2 = (int)(x/pixel_size);
+         int y2 = (int)((win_height-y)/pixel_size);
 
       // for the min point
       int x1 = viewport[0];
@@ -751,26 +873,26 @@ void mouse(int button, int state, int x, int y)
 
       if (minDistance < maxDistance)
       {
-        viewport[0] = x2;
-        viewport[1] = y2;
+      viewport[0] = x2;
+      viewport[1] = y2;
       }
       else
       {
-        viewport[2] = x2;
-        viewport[3] = y2;
+      viewport[2] = x2;
+      viewport[3] = y2;
       }
 
       if (viewport[0] > viewport[2])
       {
-        int temp = viewport[0];
-        viewport[0] = viewport[2];
-        viewport[2] = temp;
+      int temp = viewport[0];
+      viewport[0] = viewport[2];
+      viewport[2] = temp;
       }
       if (viewport[1] > viewport[3])
       {
-        int temp = viewport[1];
-        viewport[1] = viewport[3];
-        viewport[3] = temp;
+      int temp = viewport[1];
+      viewport[1] = viewport[3];
+      viewport[3] = temp;
       }
 
       cout << viewport[0] << ", " << viewport[1] << ", " << viewport[2] << ", " << viewport[3] << endl;
@@ -786,15 +908,6 @@ void mouse(int button, int state, int x, int y)
 //gets called when the curser moves accross the scene
 void motion(int x, int y)
 {
-  if (leftButtonUsed)
-  {
-    int selectedX = (int)(x/pixel_size);
-    int selectedY = (int)((win_height-y)/pixel_size);
-    polygons[currentPolygonIndex]->translate(Point(selectedX, selectedY));
-    rasterizedPoints.clear();
-    //redraw the scene after mouse movement
-  }
-
   glutPostRedisplay();
 }
 
