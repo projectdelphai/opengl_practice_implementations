@@ -24,6 +24,7 @@
 #include <stdlib.h>
 #include <math.h>
 #include <fstream>
+#include <sstream>
 #include <set>
 #include <tuple>
 
@@ -59,16 +60,18 @@ bool XY = true;
 bool XZ = false;
 bool YZ = false;
 
+int view = 0;
 int method = 1;
 int numPolygons;
 int currentPolygonIndex = 0;
 
 // viewport
 int viewport[4];
-tuple<int, int, int> blue(.2, .2, 1.0);
-tuple<int, int, int> red(1.0, .2, .2);
-tuple<int, int, int> green(.2, 1.0, .2);
-tuple<int, int, int> black(0.2, 0.2, 0.2);
+tuple<float, float, float> blue(.2, .2, 1.0);
+tuple<float, float, float> red(1.0, .2, .2);
+tuple<float, float, float> green(.2, 1.0, .2);
+tuple<float, float, float> black(0.2, 0.2, 0.2);
+tuple<float, float, float> currentColor = blue;
 char *filename;
 
 
@@ -275,9 +278,13 @@ void display()
 
     tuple<int, int, int> color = black;
 
-    if (scaleTurnedOn && (i == currentPolygonIndex))
-      color = red;
-
+    if (i == currentPolygonIndex)
+    {
+      if (scaleTurnedOn)
+        color = red;
+      else
+        color = currentColor;
+    }
 
     for (int edgeOrderIndex = 0; edgeOrderIndex < polygon->numEdges; edgeOrderIndex++)
     {
@@ -430,7 +437,12 @@ void save()
     file << polygons[i]->numVertices << "\n";
     for (int j = 0; j < polygons[i]->numVertices; j++)
     {
-      file << (polygons[i]->vertices[j]->x / 100) << " " << (polygons[i]->vertices[j]->y / 100) << '\n';
+      file << (polygons[i]->vertices[j]->x) << " " << (polygons[i]->vertices[j]->y) << " " << (polygons[i]->vertices[j]->z) << "\n";
+    }
+    file << polygons[i]->numEdges << "\n";
+    for (int j = 0; j < polygons[i]->numEdges; j++)
+    {
+      file << (polygons[i]->edgeOrder[j].first) << " " << (polygons[i]->edgeOrder[j].second) << "\n";
     }
   }
 
@@ -523,15 +535,79 @@ void key(unsigned char ch, int x, int y)
   }
   else if (ch == 'r')
   {
-    rotateTurnedOn = !rotateTurnedOn;
-    if (rotateTurnedOn)
-      scaleTurnedOn = false;
+    string x;
+    cout << "Please enter point 1, point 2, and the rotation angle in the following format:" << endl;
+    cout << "x1 y1 z1 x2 y2 z2 angle" << endl;
+    
+    getline(cin, x);
+    istringstream s(x);
+    vector<string> components;
+
+    for (string key; s >> key;)
+    {
+      components.push_back(key);
+    }
+
+    float p1x = atof(components[0].c_str());
+    float p1y = atof(components[1].c_str());
+    float p1z = atof(components[2].c_str());
+    float p2x = atof(components[3].c_str());
+    float p2y = atof(components[4].c_str());
+    float p2z = atof(components[5].c_str());
+    float angle = atof(components[6].c_str());
+
+    Point p1 = Point(p1x, p1y, p1z);
+    Point p2 = Point(p2x, p2y, p2z);
+
+    polygons[currentPolygonIndex]->specialRotate(p1, p2, angle);
+
   }
+  else if (ch == 'p')
+  {
+    // cycle through colors
+    tuple<float, float, float> c = currentColor;
+    float first_color = get<0>(c);
+    float second_color = get<1>(c);
+    float third_color = get<2>(c);
+
+    if ((int)first_color == 1)
+    {
+      first_color = 0.0;
+      second_color += 0.1;
+   }
+    else if ((int)second_color == 1)
+    {
+      second_color = 0;
+      third_color += 0.1;
+    }
+    else if ((int)third_color == 1)
+    {
+      third_color = 0;
+      first_color += 0.1;
+    }
+    else
+      first_color += 0.1;
+
+    cout << first_color << ", " << second_color << ", " << third_color << endl;
+    currentColor = tuple<float, float, float>(first_color, second_color, third_color);
+
+  }
+  else if (ch == 'z')
+    polygons[currentPolygonIndex]->rotate(1.0, 0);
+  else if (ch == 'Z')
+    polygons[currentPolygonIndex]->rotate(-1.0, 0);
+  else if (ch == 'x')
+    polygons[currentPolygonIndex]->rotate(1.0, 1);
+  else if (ch == 'X')
+    polygons[currentPolygonIndex]->rotate(-1.0, 1);
+  else if (ch == 'y')
+    polygons[currentPolygonIndex]->rotate(1.0, 2);
+  else if (ch == 'Y')
+    polygons[currentPolygonIndex]->rotate(-1.0, 2);
   else if (ch == 'q')
   {
-    //save();
+    save();
   }
-
   else if (ch == '+' || ch == '=')
   {
     if (scaleTurnedOn)
@@ -539,10 +615,12 @@ void key(unsigned char ch, int x, int y)
       polygons[currentPolygonIndex]->scale(1.05, 1.05, 1.05);
       rasterizedPoints.clear();
     }
-    else if (rotateTurnedOn)
+    else if (!scaleTurnedOn && !rotateTurnedOn)
     {
-      polygons[currentPolygonIndex]->rotate(1.0);
-      rasterizedPoints.clear();
+      float centerx = polygons[currentPolygonIndex]->centroid.x;
+      float centery = polygons[currentPolygonIndex]->centroid.y;
+      float centerz = polygons[currentPolygonIndex]->centroid.z;
+      polygons[currentPolygonIndex]->translate(Point(centerx, centery, centerz + .1));
     }
   }
   else if (ch == '-')
@@ -552,11 +630,14 @@ void key(unsigned char ch, int x, int y)
       polygons[currentPolygonIndex]->scale(.9, .9, .9);
       rasterizedPoints.clear();
     }
-    else if (rotateTurnedOn)
+    else if (!scaleTurnedOn && !rotateTurnedOn)
     {
-      polygons[currentPolygonIndex]->rotate(-1.0);
-      rasterizedPoints.clear();
+      float centerx = polygons[currentPolygonIndex]->centroid.x;
+      float centery = polygons[currentPolygonIndex]->centroid.y;
+      float centerz = polygons[currentPolygonIndex]->centroid.z;
+      polygons[currentPolygonIndex]->translate(Point(centerx, centery, centerz - .1));
     }
+
   }
   else if ((int)ch > 0)
   {
@@ -570,21 +651,22 @@ void specialKey(int key, int x, int y)
 {
   float centerx = polygons[currentPolygonIndex]->centroid.x;
   float centery = polygons[currentPolygonIndex]->centroid.y;
+  float centerz = polygons[currentPolygonIndex]->centroid.z;
   if (key == GLUT_KEY_RIGHT)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx + .1, centery));
+    polygons[currentPolygonIndex]->translate(Point(centerx + .1, centery, centerz));
   }
   else if (key == GLUT_KEY_LEFT)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx - .1, centery));
+    polygons[currentPolygonIndex]->translate(Point(centerx - .1, centery, centerz));
   }
   else if (key == GLUT_KEY_UP)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx, centery + .1));
+    polygons[currentPolygonIndex]->translate(Point(centerx, centery + .1, centerz));
   }
   else if (key == GLUT_KEY_DOWN)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx, centery - .1));
+    polygons[currentPolygonIndex]->translate(Point(centerx, centery - .1, centerz));
   }
 }
 

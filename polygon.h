@@ -26,7 +26,8 @@ class Polygon
     // transformations
     void translate(Point p);
     void scale(float dx, float dy, float dz);
-    void rotate(float angle);
+    void rotate(float angle, int axis);
+    void specialRotate(Point p1, Point p2, float angle);
     
     float toRadians(float degrees);
     float toDegrees(float radians);
