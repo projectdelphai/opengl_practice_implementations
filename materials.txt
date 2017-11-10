@@ -1,0 +1,10 @@
+2        #number of materials
+         #all color/intenisty values are between 0 and 1 unless otherwise noted
+.3 .3 .3 #Ka (ambient) red green blue (only use red for intensity) 
+.5 .5 .5 #Kd (diffuse) red green blue (only use red for intensity) 
+.7 .7 .7 #Ks (specular) red green blue (only use red for intensity) 7 #n (phone exponent) number > 1
+
+.2 .2 .2 #Ka for mat 2 
+.3 .3 .3 #Kd 
+.8 .8 .8 #Ks 
+2        #n

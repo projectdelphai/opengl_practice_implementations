@@ -15,7 +15,7 @@ LDLIBS := $(GLLIB)
 
 #TARGET = glutdemo
 #OBJS = demo.o 
-TARGET = rcasteli_p2
+TARGET = rcasteli_p3
 SOURCES = $(wildcard *.cpp)
 OBJS = $(SOURCES:.cpp=.o)
 

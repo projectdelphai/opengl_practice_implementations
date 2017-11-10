@@ -39,7 +39,7 @@ class Polygon
 
     string description;
     vector<Point *> vertices;
-    vector<pair<int, int>> edgeOrder;
+    vector<tuple<int, int, int>> triangles;
 
     map<Point, PointInfo, PointComparator> edgesXY;
     map<Point, PointInfo, PointComparator> edgesXZ;
@@ -49,7 +49,9 @@ class Polygon
 
     
     int numVertices;
-    int numEdges;
+    int numTriangles;
+    int materialID;
+
     float yMin;
     float yMax;
 

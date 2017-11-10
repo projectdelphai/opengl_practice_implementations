@@ -84,8 +84,9 @@ void idle();
 void display();
 void rasterize();
 void save();
-void draw_pix(int x, int y, int z, bool drawingViewport, tuple<int, int, int> color);
+void draw_pix(float x, float y, tuple<int, int, int> color);
 void draw_lines(Point p1, Point p2, int viewPort, tuple<int, int, int> color);
+void draw_triangles(Point *p1, Point *p2, Point *p3, tuple<int, int, int> color);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
 void specialKey(int key, int x, int y);
@@ -114,20 +115,13 @@ int main(int argc, char **argv)
   }
 
   //the number of pixels in the grid
-  grid_width = 500;
-  grid_height = 500;
+  grid_width = 200;
+  grid_height = 200;
 
-  // viewport[xmin, ymin, xmax, ymax]
-  viewport[0] = -1;
-  viewport[1] = -1;
-  viewport[2] = grid_width;
-  viewport[3] = grid_height;
-
-
-  //the size of pixels sets the inital window height and width
+ //the size of pixels sets the inital window height and width
   //don't make the pixels too large or the screen size will be larger than
   //your display size
-  pixel_size = 2;
+  pixel_size = 5;
 
   /*Window information*/
   win_height = grid_height*pixel_size;
@@ -189,6 +183,10 @@ void processDatFile()
 
     // get number of vertices in polygon
     getline(rawDatFile, line);
+    int materialID = atoi(line.c_str());
+    polygon->materialID = materialID;
+
+    getline(rawDatFile, line);
     int numVertices = atoi(line.c_str());
     polygon->numVertices = numVertices;
 
@@ -220,23 +218,32 @@ void processDatFile()
 
     }
 
-    // get number of edges
+    // get triangle vertices
     getline(rawDatFile, line);
-    int numEdges = atoi(line.c_str());
-    polygon->numEdges = numEdges;
+    int numTriangles = atoi(line.c_str());
+    polygon->numTriangles = numTriangles;
 
-    for (int j = 0; j < numEdges; j++)
+    for (int j = 0; j < numTriangles; j++)
     {
       getline(rawDatFile, line);
+
       size_t pos = line.find_first_of(" ");
+      size_t pos2;
 
-      string rawEdge1 = line.substr(0, pos);
-      string rawEdge2 = line.substr(pos, string::npos);
+      string rawP1 = line.substr(0, pos);
 
-      int edge1 = atoi(rawEdge1.c_str());
-      int edge2 = atoi(rawEdge2.c_str());
+      pos++;
+      pos2 = line.find_first_of(" ", pos);
 
-      polygon->edgeOrder.push_back(pair<int, int>(edge1 - 1, edge2 - 1));
+      string rawP2 = line.substr(pos, pos2);
+
+      string rawP3 = line.substr(pos2, string::npos);
+
+      int p1 = atoi(rawP1.c_str());
+      int p2 = atoi(rawP2.c_str());
+      int p3 = atoi(rawP3.c_str());
+
+      polygon->triangles.push_back(tuple<int, int, int>(p1 - 1, p2 - 1, p3 - 1));
 
     }
 
@@ -287,46 +294,21 @@ void display()
         color = currentColor;
     }
 
-    for (int edgeOrderIndex = 0; edgeOrderIndex < polygon->numEdges; edgeOrderIndex++)
+    for (int triangleIndex = 0; triangleIndex < polygon->numTriangles; triangleIndex++)
     {
-      int indexA = polygon->edgeOrder[edgeOrderIndex].first;
-      int indexB = polygon->edgeOrder[edgeOrderIndex].second;
+      int indexA = get<0>(polygon->triangles[triangleIndex]);
+      int indexB = get<1>(polygon->triangles[triangleIndex]);
+      int indexC = get<2>(polygon->triangles[triangleIndex]);
 
       Point *p1 = polygon->vertices[indexA];
       Point *p2 = polygon->vertices[indexB];
+      Point *p3 = polygon->vertices[indexC];
 
-      // XY
-      draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
-      // XZ
-      draw_lines(Point(p1->x+1, p1->z+1), Point(p2->x+1, p2->z+1), 2, color);
-      // YZ
-      draw_lines(Point(p1->y, p1->z), Point(p2->y, p2->z), 3, color);
-
-      // OBLIQUE
-      float degrees = 45;
-      float angleInRadians = (degrees * M_PI) / 180;
-      float x1 = p1->x + .5 * p1->z * cos(angleInRadians);
-      float y1 = p1->y + .5 * p1->z * sin(angleInRadians);
-
-      float x2 = p2->x + .5 * p2->z * cos(angleInRadians);
-      float y2 = p2->y + .5 * p2->z * sin(angleInRadians);
-
-      draw_lines(Point(x1+1, y1), Point(x2+1, y2), 4, color);
-
-    }
+      draw_triangles(p1, p2, p3, color);
+   }
 
     i++;
   }
-
-  // XY
-  //draw_lines(Point(rotatep1.x, rotatep1.y+1), Point(rotatep2.x, rotatep2.y+1), 1, red);
-  // XZ
-  //draw_lines(Point(rotatep1.x+1, rotatep1.z+1), Point(rotatep2.x+1, rotatep2.z+1), 2, red);
-  // YZ
-  //draw_lines(Point(rotatep1.y, rotatep1.z), Point(rotatep2.y, rotatep2.z), 3, red);
-
-
-
 
   //rasterize();
 
@@ -336,8 +318,61 @@ void display()
   check();
 }
 
+void draw_triangles(Point *p1, Point *p2, Point *p3, tuple<int, int, int> color)
+{
+  // XY
+  draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
+  draw_lines(Point(p2->x, p2->y+1), Point(p3->x, p3->y+1), 1, color);
+  draw_lines(Point(p3->x, p3->y+1), Point(p1->x, p1->y+1), 1, color);
+
+  //void draw_pix(int x, int y, int z, bool drawingViewPort, tuple<int, int, int> color)
+  // manual XY (add +1 to each coordinate);
+  draw_pix(p1->x+1, p1->y, color);
+  draw_pix(p2->x+1, p2->y, color);
+
+  draw_pix(p2->x+1, p2->y, color);
+  draw_pix(p3->x+1, p3->y, color);
+  
+  draw_pix(p3->x+1, p3->y, color);
+  draw_pix(p1->x+1, p1->y, color);
+
+  // have opengl draw lines for you
+  
+  // XY
+  draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
+  draw_lines(Point(p2->x, p2->y+1), Point(p3->x, p3->y+1), 1, color);
+  draw_lines(Point(p3->x, p3->y+1), Point(p1->x, p1->y+1), 1, color);
+  // XZ
+  draw_lines(Point(p1->x+1, p1->z+1), Point(p2->x+1, p2->z+1), 2, color);
+  draw_lines(Point(p2->x+1, p2->z+1), Point(p3->x+1, p3->z+1), 2, color);
+  draw_lines(Point(p3->x+1, p3->z+1), Point(p1->x+1, p1->z+1), 2, color);
+  // YZ
+  draw_lines(Point(p1->y, p1->z), Point(p2->y, p2->z), 3, color);
+  draw_lines(Point(p2->y, p2->z), Point(p3->y, p3->z), 3, color);
+  draw_lines(Point(p3->y, p3->z), Point(p1->y, p1->z), 3, color);
+
+  /*
+  // OBLIQUE
+  float degrees = 45;
+  float angleInRadians = (degrees * M_PI) / 180;
+  float x1 = p1->x + .5 * p1->z * cos(angleInRadians);
+  float y1 = p1->y + .5 * p1->z * sin(angleInRadians);
+
+  float x2 = p2->x + .5 * p2->z * cos(angleInRadians);
+  float y2 = p2->y + .5 * p2->z * sin(angleInRadians);
+
+  float x3 = p3->x + .5 * p3->z * cos(angleInRadians);
+  float y3 = p3->y + .5 * p3->z * sin(angleInRadians);
+
+  draw_lines(Point(x1+1, y1), Point(x2+1, y2), 4, color);
+  draw_lines(Point(x2+1, y2), Point(x3+1, y3), 4, color);
+  draw_lines(Point(x3+1, y3), Point(x1+1, y1), 4, color);
+  */
+}
+
 void rasterize()
 {
+  /*
   rasterizedPoints.clear();
   // draw viewport
   for (int i = viewport[0]; i < (viewport[2] + 1); i++)
@@ -441,6 +476,7 @@ void rasterize()
     }
     polygonIndex++;
   }
+*/
 
 }
 
@@ -454,43 +490,38 @@ void save()
   for (int i = 0; i < numPolygons; i++)
   {
     file << polygons[i]->description << "\n";
+    file << polygons[i]->materialID << "\n";
     file << polygons[i]->numVertices << "\n";
     for (int j = 0; j < polygons[i]->numVertices; j++)
     {
       file << (polygons[i]->vertices[j]->x) << " " << (polygons[i]->vertices[j]->y) << " " << (polygons[i]->vertices[j]->z) << "\n";
     }
-    file << polygons[i]->numEdges << "\n";
-    for (int j = 0; j < polygons[i]->numEdges; j++)
+    file << polygons[i]->numTriangles << "\n";
+    for (int j = 0; j < polygons[i]->numTriangles; j++)
     {
-      file << (polygons[i]->edgeOrder[j].first+1) << " " << (polygons[i]->edgeOrder[j].second+1) << "\n";
+      file << get<0>(polygons[i]->triangles[j])+1 << " " << get<1>(polygons[i]->triangles[j])+1 << " " << get<2>(polygons[i]->triangles[j])+1 << "\n";
     }
   }
 
   file.close();
 
   glutDestroyWindow(glutGetWindow());
-  exit(0);
-
 }
 
 
 
 //Draws a single "pixel" given the current grid size
 //don't change anything in this for project 1
-void draw_pix(int x, int y, int z, bool drawingViewPort, tuple<int, int, int> color){
-  bool pixInside=((viewport[0] < x && x < viewport[2]) && (viewport[1] < y && y < viewport[3]));
-
-  if (pixInside || drawingViewPort)
-  {
+void draw_pix(float x, float y, tuple<int, int, int> color)
+{
     glBegin(GL_POINTS);
+  
     glColor3f(get<0>(color),get<1>(color),get<2>(color));
-
-    glVertex3f(x + .5, y + .5, z + .5);
+    glVertex3f(x, y, 0);
 
 
 
     glEnd();
-  }
 }
 
 int computeCode(float x, float y, int xmin, int xmax, int ymin, int ymax)
@@ -744,7 +775,8 @@ void key(unsigned char ch, int x, int y)
     polygons[currentPolygonIndex]->rotate(-1.0, 2);
   else if (ch == 'q')
   {
-    save();
+    //save();
+    exit(0);
   }
   else if (ch == '+' || ch == '=')
   {
