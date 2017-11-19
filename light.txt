@@ -1,8 +1,5 @@
-#only a single light is needed for project 3
-#all values are between 0 and 1 unless otherwise noted
-.75 .75 .75      #X (lights position in space)
-.9 .9 .9         #La (lights ambient component)
-.75 .75 .75      #Li (Light intensity)
-1.1		 #F distance of from point from center of screen
-.5		 #K average “distance” of scene from light source
-                
+.75 .75 .75
+.9 .9 .9
+.75 .75 .75
+1.1
+.5

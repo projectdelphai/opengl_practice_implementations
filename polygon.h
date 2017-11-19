@@ -4,6 +4,7 @@
 #include <map>
 
 #include "point.h"
+#include "triangle.h"
 
 using namespace std;
 
@@ -16,7 +17,9 @@ class Polygon
     void insertEdgePoint(Point p, PointInfo pi, int plane);
     void displayEdges();
     void calculateCentroid();
+    int getElement(Triangle *t, int element);
     void calculateEdges(bool useDDA);
+    void recalculateEdges(bool useDDA);
     void markVerticesAndExtrema();
     void drawHorizontalLine(float x1, float x2, float y1, int plane);
     void drawVerticalLine(float x1, float x2, float y1, int plane);
@@ -39,7 +42,11 @@ class Polygon
 
     string description;
     vector<Point *> vertices;
-    vector<tuple<int, int, int>> triangles;
+    vector<pair<int, int>> edgeOrder;
+    vector<Triangle *> triangles;
+    vector<Triangle *> tXY;
+    vector<Triangle *> tXZ;
+    vector<Triangle *> tYZ;
 
     map<Point, PointInfo, PointComparator> edgesXY;
     map<Point, PointInfo, PointComparator> edgesXZ;
@@ -49,6 +56,7 @@ class Polygon
 
     
     int numVertices;
+    int numEdges;
     int numTriangles;
     int materialID;
 
@@ -56,4 +64,3 @@ class Polygon
     float yMax;
 
 };
-

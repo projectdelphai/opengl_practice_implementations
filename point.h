@@ -7,6 +7,7 @@ class Point
     float x;
     float y;
     float z;
+    float intensity;
 };
 
 class PointInfo

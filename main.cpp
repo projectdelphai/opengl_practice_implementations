@@ -29,6 +29,8 @@
 #include <tuple>
 
 #include "polygon.h"
+#include "material.h"
+#include "edge.h"
 
 
 /****set in main()****/
@@ -44,6 +46,7 @@ float pixel_size;
 /*Window information*/
 int win_height;
 int win_width;
+int nextPane = 1;
 
 // vector of polygons to display from file
 vector<Polygon *> polygons;
@@ -56,6 +59,7 @@ bool scaleTurnedOn = false;
 bool rotateTurnedOn = false;
 bool leftButtonUsed = false;
 bool rightButtonUsed = false;
+bool illumination = true;
 bool XY = true;
 bool XZ = false;
 bool YZ = false;
@@ -69,7 +73,6 @@ Point rotatep1 = Point(0.0, 0.0, 0.0);
 Point rotatep2 = Point(0.0, 0.0, 0.0);
 
 // viewport
-int viewport[4];
 tuple<float, float, float> blue(.2, .2, 1.0);
 tuple<float, float, float> red(1.0, .2, .2);
 tuple<float, float, float> green(.2, 1.0, .2);
@@ -77,51 +80,51 @@ tuple<float, float, float> black(0.2, 0.2, 0.2);
 tuple<float, float, float> currentColor = blue;
 char *filename;
 
+vector<Material *> materials;
+tuple<float, float, float> Li;
+tuple<float, float, float> La;
+float k;
+tuple<float, float, float> light_position;
+tuple<float, float, float> from_position;
 
-void processDatFile();
+tuple<float, float, float> lineToTuple(string line);
+void processInputFile();
+void processLightFile();
 void init();
 void idle();
 void display();
 void rasterize();
 void save();
-void draw_pix(float x, float y, tuple<int, int, int> color);
+void draw_pix(float x, float y, tuple<int, int, int> color, int intensity);
 void draw_lines(Point p1, Point p2, int viewPort, tuple<int, int, int> color);
-void draw_triangles(Point *p1, Point *p2, Point *p3, tuple<int, int, int> color);
+void draw_triangles(int indexA, int indexB, int indexC, Polygon *polygon, tuple<int, int, int> color);
+void draw_vertices(Polygon *polygon);
+void displayPoint(string line, Point *p);
+float findVertexIntensity(Polygon *polygon, Point *p);
 void reshape(int width, int height);
 void key(unsigned char ch, int x, int y);
 void specialKey(int key, int x, int y);
 void mouse(int button, int state, int x, int y);
 void motion(int x, int y);
 void check();
-
-
+void scanline_edges(Edge e1, Edge e2, int plane, tuple<int, int, int> color);
+bool intersect_edge(float scany, const Edge& e, float &x_int);
+void render_scanline(float y, float x1, float x2, int plane, tuple<int, int, int> color);
 
 int main(int argc, char **argv)
 {
   filename = argv[1];
 
-  if (argc == 3)
-  {
-    method = atoi(argv[2]);
-
-    if (method == 1)
-    {
-      useDDA = true;
-    }
-    else if (method == 2)
-    {
-      useBresenham = true;
-    }
-  }
-
   //the number of pixels in the grid
-  grid_width = 200;
-  grid_height = 200;
+  grid_width = 500;
+  grid_height = 500;
+  
+  nextPane = 3;
 
  //the size of pixels sets the inital window height and width
   //don't make the pixels too large or the screen size will be larger than
   //your display size
-  pixel_size = 5;
+  pixel_size = 2;
 
   /*Window information*/
   win_height = grid_height*pixel_size;
@@ -130,7 +133,8 @@ int main(int argc, char **argv)
   /*Set up glut functions*/
   /** See https://www.opengl.org/resources/libraries/glut/spec3/spec3.html ***/
 
-  processDatFile();
+  processLightFile();
+  processInputFile();
 
   glutInit(&argc,argv);
   glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
@@ -138,7 +142,7 @@ int main(int argc, char **argv)
   //create window of size (win_width x win_height
   glutInitWindowSize(win_width,win_height);
   //windown title is "glut demo"
-  glutCreateWindow("Project 2");
+  glutCreateWindow("Project 3");
 
   /*defined glut callback functions*/
   glutDisplayFunc(display); //rendering calls here
@@ -158,8 +162,88 @@ int main(int argc, char **argv)
   return 0;
 }
 
+tuple<float, float, float> stringToTuple(string line)
+{
+    size_t pos = line.find_first_of(" ");
+    size_t pos2;
+
+    string rawX = line.substr(0, pos);
+    pos++;
+    pos2 = line.find_first_of(" ", pos);
+    string rawY = line.substr(pos, pos2);
+    string rawZ = line.substr(pos2, string::npos);
+
+    float x = atof(rawX.c_str());
+    float y = atof(rawY.c_str());
+    float z = atof(rawZ.c_str());
+
+    return make_tuple(x, y, z);
+}
+
+// read light and material files
+void processLightFile()
+{
+  ifstream rawDatFile("materials.txt");
+  string line;
+
+  // number
+  getline(rawDatFile, line);
+
+  int numMaterials = atoi(line.c_str());
+
+  for (int i = 0; i < numMaterials; i++)
+  {
+    // ka
+    getline(rawDatFile, line);
+    tuple<float, float, float> ka = stringToTuple(line);
+    // kd
+    getline(rawDatFile, line);
+    tuple<float, float, float> kd = stringToTuple(line);
+    // ks
+    getline(rawDatFile, line);
+    tuple<float, float, float> ks = stringToTuple(line);
+
+    // n
+    getline(rawDatFile, line);
+    int n = atoi(line.c_str());
+
+    Material *material = new Material(ka, kd, ks, n);
+    materials.push_back(material);
+
+  }
+
+  ifstream rawLightFile("light.txt");
+  string line2;
+
+  // light position
+  getline(rawLightFile, line2);
+  light_position = stringToTuple(line2);
+
+  // La
+  getline(rawLightFile, line2);
+  La = stringToTuple(line2);
+
+  // Li
+  getline(rawLightFile, line2);
+  Li = stringToTuple(line2);
+  
+  // from position
+  getline(rawLightFile, line2);
+  float f = atof(line2.c_str());
+  from_position = make_tuple(.5, .5, f);
+
+  // K
+  getline(rawLightFile, line2);
+  k = atof(line2.c_str());
+}
+
+void populatePlaneTriangles(Polygon *polygon)
+{
+
+}
+
 /* read data file for information about polygons */
-void processDatFile()
+void processInputFile()
 {
   ifstream rawDatFile(filename);
   string line;
@@ -243,13 +327,65 @@ void processDatFile()
       int p2 = atoi(rawP2.c_str());
       int p3 = atoi(rawP3.c_str());
 
-      polygon->triangles.push_back(tuple<int, int, int>(p1 - 1, p2 - 1, p3 - 1));
+      Triangle *t = new Triangle(p1 - 1, p2 - 1, p3 - 1);
+
+      polygon->triangles.push_back(t);
 
     }
+    populatePlaneTriangles(polygon);
 
 
     polygon->calculateCentroid();
-   polygons.push_back(polygon);
+
+    for (int j = 0; j < polygon->numTriangles; j++)
+    {
+      Triangle *tri = polygon->triangles[j];
+      Point *p0 = polygon->vertices[tri->vertex1];
+      Point *p1 = polygon->vertices[tri->vertex2];
+      Point *p2 = polygon->vertices[tri->vertex3];
+
+      Point *V = new Point(p1->x - p0->x, p1->y - p0->y, p1->z - p0->z);
+      Point *W = new Point(p2->x - p0->x, p2->y - p0->y, p2->z - p0->z);
+
+      Point *normal = new Point(V->y*W->z - V->z*W->y, V->z*W->x - V->x*W->z, V->x*W->y - V->y*W->x);
+      float mag = sqrt(normal->x*normal->x + normal->y*normal->y + normal->z*normal->z);
+      Point *nn = new Point(normal->x / mag, normal->y / mag, normal->z / mag);
+
+      polygon->triangles[j]->faceNormal = new Point(nn->x, nn->y, nn->z);
+    }
+
+    float imin = 0;
+    float imax = 0;
+    vector<float> rawIntensities;
+
+    for (int x = 0; x < polygon->numVertices; x++)
+    {
+      Point *p = polygon->vertices[x];
+      float intensity = findVertexIntensity(polygon, p);
+
+      if (intensity < imin)
+        imin = intensity;
+      if (intensity > imax)
+        imax = intensity;
+
+      polygon->vertices[x]->intensity = intensity;
+
+      //rawIntensities.push_back(intensity);
+    }
+
+    for (int x = 0; x < polygon->numVertices; x++)
+    {
+      float rawI = polygon->vertices[x]->intensity;
+      float intensity = (rawI - imin) / (imax - imin);
+
+      intensity = round(intensity * 10);
+
+      polygon->vertices[x]->intensity = intensity;
+
+      //polygon->intensities.push_back(intensity);
+    }
+
+    polygons.push_back(polygon);
 
   }
 
@@ -296,21 +432,18 @@ void display()
 
     for (int triangleIndex = 0; triangleIndex < polygon->numTriangles; triangleIndex++)
     {
-      int indexA = get<0>(polygon->triangles[triangleIndex]);
-      int indexB = get<1>(polygon->triangles[triangleIndex]);
-      int indexC = get<2>(polygon->triangles[triangleIndex]);
+      int indexA = polygon->triangles[triangleIndex]->vertex1;
+      int indexB = polygon->triangles[triangleIndex]->vertex2;
+      int indexC = polygon->triangles[triangleIndex]->vertex3;
 
-      Point *p1 = polygon->vertices[indexA];
-      Point *p2 = polygon->vertices[indexB];
-      Point *p3 = polygon->vertices[indexC];
+      draw_triangles(indexA, indexB, indexC, polygon, color);
+    }
 
-      draw_triangles(p1, p2, p3, color);
-   }
+    draw_vertices(polygon);
 
     i++;
   }
 
-  //rasterize();
 
   //blits the current opengl framebuffer on the screen
   glutSwapBuffers();
@@ -318,26 +451,319 @@ void display()
   check();
 }
 
-void draw_triangles(Point *p1, Point *p2, Point *p3, tuple<int, int, int> color)
+void draw_vertices(Polygon *polygon)
 {
+  float factor = 3;
+  for (int i = 0; i < polygon->numVertices; i++)
+  {
+    Point *p = polygon->vertices[i];
+
+    int intensity = polygon->vertices[i]->intensity;
+
+    // XY
+    draw_pix(p->x * factor, p->y * factor + nextPane, red, intensity);
+    // XZ
+    draw_pix(p->x * factor + nextPane, p->z * factor + nextPane, red, intensity);
+    // YZ
+    draw_pix(p->y * factor, p->z * factor, red, intensity);
+  }
+}
+
+void displayPoint(string line, Point *f)
+{
+  cout << line << " = (" << f->x << ", " << f->y << ", " << f->z << ")" << endl;
+
+}
+
+float findVertexIntensity(Polygon *polygon, Point *p)
+{
+  /*
+     vector<Material *> materials;
+     tuple<float, float, float> Li; = Il
+     tuple<float, float, float> La; = Ia
+     float k;
+     tuple<float, float, float> light_position;
+     tuple<float, float, float> from_position;
+     */
+
+  // set up
+  Material *material = materials[polygon->materialID - 1];
+
+  Point *ka = new Point(get<0>(material->Ka), get<1>(material->Ka), get<2>(material->Ka));
+  Point *kd = new Point(get<0>(material->Kd), get<1>(material->Kd), get<2>(material->Kd));
+  Point *ks = new Point(get<0>(material->Ks), get<1>(material->Ks), get<2>(material->Ks));
+  Point *li = new Point(get<0>(Li), get<1>(Li), get<2>(Li));
+  Point *la= new Point(get<0>(La), get<1>(La), get<2>(La));
+
+  Point *f = new Point(get<0>(from_position), get<1>(from_position), get<2>(from_position));
+  Point *x = new Point(get<0>(light_position), get<1>(light_position), get<2>(light_position));
+
+
+  Point *XminusP = new Point(x->x - p->x, x->y - p->y, x->z - p->z);
+  Point *FminusP = new Point(f->x - p->x, f->y - p->y, f->z - p->z);
+
+  float magXminusP = sqrt(XminusP->x*XminusP->x + XminusP->y*XminusP->y + XminusP->z*XminusP->z);
+  float magFminusP = sqrt(FminusP->x*FminusP->x + FminusP->y*FminusP->y + FminusP->z*FminusP->z);
+
+  // vectors
+  Point *l = new Point(XminusP->x / magXminusP, XminusP->y / magXminusP, XminusP->z / magXminusP);
+  Point *v = new Point(FminusP->x / magFminusP, FminusP->y / magFminusP, FminusP->z / magFminusP);
+
+  // n vector is the average of all the face vectors of triangles containing the vertex
+  Point *rawN = new Point(0, 0, 0);
+  int count = 0;
+
+  for (int i = 0; i < polygon->numTriangles; i++)
+  {
+    Triangle *t = polygon->triangles[i];
+
+    if (t->containsVertex(p, polygon->vertices))
+    {
+      count++;
+      rawN->x += t->faceNormal->x;
+      rawN->y += t->faceNormal->y;
+      rawN->z += t->faceNormal->z;
+    }
+  }
+
+  float nmag = sqrt(rawN->x*rawN->x + rawN->y*rawN->y + rawN->z*rawN->z);
+  // normalizing n
+  Point *n = new Point(rawN->x / nmag, rawN->y / nmag, rawN->z / nmag);
+
+  // r vector is 2(n . l)n - l
+  float ldotn = l->x*n->x + l->y*n->y + l->z*n->z;
+  float m = 2 * ldotn;
+  Point *r1 = new Point(m * n->x, m * n->y, m * n->z);
+  Point *rawR = new Point(r1->x - l->x, r1->y - l->y, r1->z - l->z);
+  float rmag = sqrt(rawR->x*rawR->x + rawR->y*rawR->y + rawR->z*rawR->z);
+  Point *r = new Point(rawR->x / rmag, rawR->y / rmag, rawR->z / rmag);
+
+
+  // calculations for simple math
+  float rKaIa = ka->x * la->x;
+
+  float magplusk = magFminusP + k;
+  float rLidividedby = li->x / magplusk;
+
+  float rkdldotn = kd->x * ldotn;
+  float rdotv = r->x*v->x + r->y*v->y + r->z*v->z;
+
+  // start combining terms;
+  float rdotvpower = pow(rdotv, material->n);
+  float rksrdotvpower = ks->x * rdotvpower;
+
+  float rs = rkdldotn + rksrdotvpower;
+  float rs2 = rLidividedby * rs;
+  float rrawI = rKaIa + rs2;
+
+  return rrawI;
+}
+
+void scanline_edges(Edge e1, Edge e2, int plane, tuple<int, int, int> color)
+{
+  if (e1.p1->y == e1.p2->y)
+  {
+    //cout << "(" << e1.p1->x << ", " << e1.p1->y << ") -> (" << e1.p2->x << ", " << e1.p1->y << ")" << endl;
+    render_scanline(e1.p1->y, e1.p1->x, e1.p2->x, plane, color);
+    return;
+  }
+  if (e2.p1->y == e2.p2->y)
+  {
+    render_scanline(e2.p2->y, e2.p1->x, e2.p2->x, plane, color);
+    return;
+  }
+
+  float ymin = max(e1.p1->y, e2.p1->y);
+  float ymax = min(e1.p2->y, e2.p2->y);
+
+  for (float y = ymin; y <= ymax; y+=1.0)
+  {
+    /*cout << "b" << endl;
+      cout << "e1->p1: " << e1.p1->x << ", " << e1.p1->y << " : e1->p2: " << e1.p2->x << ", " << e1.p2->y << endl;
+      cout << "e2->p1: " << e2.p1->x << ", " << e2.p1->y << " : e2->p2: " << e2.p2->x << ", " << e2.p2->y << endl;*/
+    float x1, x2;
+    intersect_edge(y, e1, x1);
+    intersect_edge(y, e2, x2);
+    /*cout << "c" << endl;
+      cout << "x1: " << x1 << ", x2: " << x2 << endl;*/
+
+    if (x1 < x2)
+      render_scanline(y, x1, x2, plane, color);
+    else
+      render_scanline(y, x2, x1, plane, color);
+  }
+
+}
+
+bool intersect_edge(float scany, const Edge& e, float &x_int){
+  // parallel lines
+  if(e.p2->y==e.p1->y) 
+    return false;
+
+  x_int = (scany-e.p1->y)*(e.p2->x-e.p1->x)/(e.p2->y-e.p1->y)+e.p1->x;
+  return true;
+}
+
+//could include intensity values and use those to interpolate here
+void render_scanline(float y, float x1, float x2, int plane, tuple<int,int,int> color){
+  //cout << "x1: " << x1 << endl;
+  int py=(int)floor(y);
+
+  for(int px = (int)floor(x1); px < x2; px++)
+  {
+    float px2 = px / 100.0;
+    float py2 = py / 100.0;
+    //cout << "px2: " << px2 << ", py2: " << py2 << ", x2: " << x2 << endl;
+    if (plane == 1)
+      draw_pix(px2 * 3, py2 * 3 + nextPane, color, 9);
+    else if (plane == 2)
+      draw_pix(px2 * 3 + nextPane, py2 * 3 + nextPane, color, 9);
+    else if (plane == 3)
+      draw_pix(px2 * 3, py2 * 3, color, 9);
+
+    //draw_fbpix(px,py,1.0);
+  }
+}
+
+void draw_triangles(int indexA, int indexB, int indexC, Polygon *polygon, tuple<int, int, int> color)
+{
+  Point *p1 = polygon->vertices[indexA];
+  Point *p2 = polygon->vertices[indexB];
+  Point *p3 = polygon->vertices[indexC];
+
+  /*int i1 = polygon->intensities[indexA];
+    int i2 = polygon->intensities[indexB];
+    int i3 = polygon->intensities[indexC];
+    int factor = 3;*/
+
+  Edge e1, e2, e3;
+
   // XY
-  draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
-  draw_lines(Point(p2->x, p2->y+1), Point(p3->x, p3->y+1), 1, color);
-  draw_lines(Point(p3->x, p3->y+1), Point(p1->x, p1->y+1), 1, color);
+  if (p1->y < p2->y)
+  {
+    e1.p1 = new Point(p1->x, p1->y);
+    e1.p2 = new Point(p2->x, p2->y);
+  }
+  else
+  {
+    e1.p1 = new Point(p2->x, p2->y);
+    e1.p2 = new Point(p1->x, p1->y);
+  }
+  if (p1->y < p3->y)
+  {
+    e2.p1 = new Point(p1->x, p1->y);
+    e2.p2 = new Point(p3->x, p3->y);
+  }
+  else
+  {
+    e2.p1 = new Point(p3->x, p3->y);
+    e2.p2 = new Point(p1->x, p1->y);
+  }
+  if (p2->y < p3->y)
+  {
+    e3.p1 = new Point(p2->x, p2->y);
+    e3.p2 = new Point(p3->x, p3->y);
+  }
+  else
+  {
+    e3.p1 = new Point(p3->x, p3->y);
+    e3.p2 = new Point(p2->x, p2->y);
+  }
 
-  //void draw_pix(int x, int y, int z, bool drawingViewPort, tuple<int, int, int> color)
-  // manual XY (add +1 to each coordinate);
-  draw_pix(p1->x+1, p1->y, color);
-  draw_pix(p2->x+1, p2->y, color);
+  e1.scaleUp();
+  e2.scaleUp();
+  e3.scaleUp();
+  scanline_edges(e1, e2, 1, color);
+  scanline_edges(e1, e3, 1, color);
+  scanline_edges(e2, e3, 1, color);
+  e1.scaleDown();
+  e2.scaleDown();
+  e3.scaleDown();
 
-  draw_pix(p2->x+1, p2->y, color);
-  draw_pix(p3->x+1, p3->y, color);
-  
-  draw_pix(p3->x+1, p3->y, color);
-  draw_pix(p1->x+1, p1->y, color);
+  // XZ
+  if (p1->z < p2->z)
+  {
+    e1.p1 = new Point(p1->x, p1->z);
+    e1.p2 = new Point(p2->x, p2->z);
+  }
+  else
+  {
+    e1.p1 = new Point(p2->x, p2->z);
+    e1.p2 = new Point(p1->x, p1->z);
+  }
+  if (p1->z < p3->z)
+  {
+    e2.p1 = new Point(p1->x, p1->z);
+    e2.p2 = new Point(p3->x, p3->z);
+  }
+  else
+  {
+    e2.p1 = new Point(p3->x, p3->z);
+    e2.p2 = new Point(p1->x, p1->z);
+  }
+  if (p2->z < p3->z)
+  {
+    e3.p1 = new Point(p2->x, p2->z);
+    e3.p2 = new Point(p3->x, p3->z);
+  }
+  else
+  {
+    e3.p1 = new Point(p3->x, p3->z);
+    e3.p2 = new Point(p2->x, p2->z);
+  }
 
-  // have opengl draw lines for you
-  
+  e1.scaleUp();
+  e2.scaleUp();
+  e3.scaleUp();
+  scanline_edges(e1, e2, 2, color);
+  scanline_edges(e1, e3, 2, color);
+  scanline_edges(e2, e3, 2, color);
+  e1.scaleDown();
+  e2.scaleDown();
+  e3.scaleDown();
+
+  // YZ
+  if (p1->z < p2->z)
+  {
+    e1.p1 = new Point(p1->y, p1->z);
+    e1.p2 = new Point(p2->y, p2->z);
+  }
+  else
+  {
+    e1.p1 = new Point(p2->y, p2->z);
+    e1.p2 = new Point(p1->y, p1->z);
+  }
+  if (p1->z < p3->z)
+  {
+    e2.p1 = new Point(p1->y, p1->z);
+    e2.p2 = new Point(p3->y, p3->z);
+  }
+  else
+  {
+    e2.p1 = new Point(p3->y, p3->z);
+    e2.p2 = new Point(p1->y, p1->z);
+  }
+  if (p2->z < p3->z)
+  {
+    e3.p1 = new Point(p2->y, p2->z);
+    e3.p2 = new Point(p3->y, p3->z);
+  }
+  else
+  {
+    e3.p1 = new Point(p3->y, p3->z);
+    e3.p2 = new Point(p2->y, p2->z);
+  }
+
+  e1.scaleUp();
+  e2.scaleUp();
+  e3.scaleUp();
+  scanline_edges(e1, e2, 3, color);
+  scanline_edges(e1, e3, 3, color);
+  scanline_edges(e2, e3, 3, color);
+  e1.scaleDown();
+  e2.scaleDown();
+  e3.scaleDown();
+  /*// have opengl draw lines for you
   // XY
   draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
   draw_lines(Point(p2->x, p2->y+1), Point(p3->x, p3->y+1), 1, color);
@@ -351,7 +777,6 @@ void draw_triangles(Point *p1, Point *p2, Point *p3, tuple<int, int, int> color)
   draw_lines(Point(p2->y, p2->z), Point(p3->y, p3->z), 3, color);
   draw_lines(Point(p3->y, p3->z), Point(p1->y, p1->z), 3, color);
 
-  /*
   // OBLIQUE
   float degrees = 45;
   float angleInRadians = (degrees * M_PI) / 180;
@@ -368,116 +793,6 @@ void draw_triangles(Point *p1, Point *p2, Point *p3, tuple<int, int, int> color)
   draw_lines(Point(x2+1, y2), Point(x3+1, y3), 4, color);
   draw_lines(Point(x3+1, y3), Point(x1+1, y1), 4, color);
   */
-}
-
-void rasterize()
-{
-  /*
-  rasterizedPoints.clear();
-  // draw viewport
-  for (int i = viewport[0]; i < (viewport[2] + 1); i++)
-  {
-    draw_pix(i, viewport[1], 0, true, green);
-    draw_pix(i, viewport[3], 0, true, green);
-  }
-  for (int i = viewport[1]; i < viewport[3]; i++)
-  {
-    draw_pix(viewport[0], 0, i, true, green);
-    draw_pix(viewport[2], 0, i, true, green);
-  }
-
-  // for every polygon, fill it in via horizontal scan lines
-  int polygonIndex = 0;
-  vector<Polygon *>::iterator it;
-  for (it = polygons.begin(); it != polygons.end(); it++)
-  {
-    map<Point, PointInfo>::iterator findIt;
-
-    float yMin = (*it)->yMin;
-    float yMax = (*it)->yMax;
-
-    bool on = false;
-
-    float previousX = 0;
-    for (float j = yMin; j < yMax + 1; j++)
-    {
-      for (float i = 0; i < grid_width; i++)
-      {
-        // find the floating point edge given an integer point
-        findIt = (*it)->findApproxPoint(i, j);
-
-        if (findIt != (*it)->edgesXY.end())
-        {
-          if (i == (previousX + 1))
-          {
-            bool nextPointExists = false;
-            map<Point, PointInfo>::iterator it2;
-            for (it2 = (*it)->edgesXY.begin(); it2 != (*it)->edgesXY.end(); it2++)
-            {
-              if (((int)it2->first.y == 79 && j == 79))
-              {
-              }
-              if (((int)it2->first.y) == j)
-              {
-                if ((int)it2->first.x > i)
-                {
-                  nextPointExists = true;
-                }
-              }
-            }
-            if (!nextPointExists)
-            {
-              on = false;
-            }
-            continue;
-
-          }
-
-          if (findIt->second.partOfHorizontal == true)
-          {
-            on = false;
-            continue;
-          }
-
-          previousX = i;
-          // as long as it's not an extrema, flip the on bit
-          // to start drawing or stop drawing
-          if (findIt->second.extrema != true)
-          {
-            on = !on;
-            continue;
-          }
-        }
-
-        if ((on == true))
-        {
-          if (polygonIndex == currentPolygonIndex)
-          {
-            if (scaleTurnedOn)
-              draw_pix(i, j, 0, false, green);
-            else if (rotateTurnedOn)
-            {
-              draw_pix(i,j, 0, false, blue);
-            }
-            else
-              draw_pix(i, j, 0, false, red);
-          }
-          else
-            draw_pix(i, j, 0, false, black);
-          // keep track of rasterized points for mouse interactions
-          rasterizedPoints.insert(pair<Point, int>(Point(i, j), polygonIndex));
-        }
-
-      }
-      on = false;
-
-      //draw_pix((*it)->centroid.x, (*it)->centroid.y, false, black);
-
-    }
-    polygonIndex++;
-  }
-*/
-
 }
 
 void save()
@@ -499,7 +814,7 @@ void save()
     file << polygons[i]->numTriangles << "\n";
     for (int j = 0; j < polygons[i]->numTriangles; j++)
     {
-      file << get<0>(polygons[i]->triangles[j])+1 << " " << get<1>(polygons[i]->triangles[j])+1 << " " << get<2>(polygons[i]->triangles[j])+1 << "\n";
+      file << polygons[i]->triangles[j]->vertex1 + 1 << " " << polygons[i]->triangles[j]->vertex2 + 1 << " " << polygons[i]->triangles[j]->vertex3 + 1 << "\n";
     }
   }
 
@@ -512,16 +827,29 @@ void save()
 
 //Draws a single "pixel" given the current grid size
 //don't change anything in this for project 1
-void draw_pix(float x, float y, tuple<int, int, int> color)
+void draw_pix(float x, float y, tuple<int, int, int> color, int intensity)
 {
-    glBegin(GL_POINTS);
-  
-    glColor3f(get<0>(color),get<1>(color),get<2>(color));
-    glVertex3f(x, y, 0);
-
-
-
-    glEnd();
+  glBegin(GL_POINTS);
+  glColor3f(get<0>(color),get<1>(color),get<2>(color));
+  if (intensity > 0)
+    glVertex3f(x+.01, y+.01, 0); // 1
+  if (intensity > 1)
+    glVertex3f(x+.02, y+.01, 0); // 2
+  if (intensity > 2)
+    glVertex3f(x+.01, y+.02, 0); // 3
+  if (intensity > 3)
+    glVertex3f(x+.00, y+.00, 0); // 4
+  if (intensity > 4)
+    glVertex3f(x+.00, y+.01, 0); // 5
+  if (intensity > 5)
+    glVertex3f(x+.02, y+.00, 0); // 6
+  if (intensity > 6)
+    glVertex3f(x+.02, y+.02, 0); // 7
+  if (intensity > 7)
+    glVertex3f(x+.00, y+.02, 0); // 8
+  if (intensity > 8)
+    glVertex3f(x+.01, y+.00, 0); // 9
+  glEnd();
 }
 
 int computeCode(float x, float y, int xmin, int xmax, int ymin, int ymax)
@@ -672,7 +1000,8 @@ void reshape(int width, int height)
   // the pixel space is mapped to the grid space
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
-  glOrtho(0,2,0,2,-10,10);
+  //glOrtho(0,grid_width * 2,0,grid_height * 2,-10,10);
+  glOrtho(0,6,0,6,-10,10);
 
   //clear the modelview matrix
   glMatrixMode(GL_MODELVIEW);
@@ -681,6 +1010,7 @@ void reshape(int width, int height)
   //set pixel size based on width, if the aspect ratio
   //changes this hack won't work as well
   pixel_size = width/(float)grid_width;
+  cout << pixel_size << endl;
 
   //set pixel size relative to the grid cell size
   glPointSize(pixel_size);
@@ -778,6 +1108,10 @@ void key(unsigned char ch, int x, int y)
     //save();
     exit(0);
   }
+  else if (ch == 'w')
+  {
+    illumination = !illumination;
+  }
   else if (ch == '+' || ch == '=')
   {
     if (scaleTurnedOn)
@@ -868,68 +1202,10 @@ void mouse(int button, int state, int x, int y)
   {
     if (leftButtonUsed)
     {
-      /*
-         int selectedX = (int)(x/pixel_size);
-         int selectedY = (int)((win_height-y)/pixel_size);
 
-         for (int i = 0; i < numPolygons; i++)
-         {
-         map<Point, int>::iterator ret;
-         ret = rasterizedPoints.find(Point(selectedX, selectedY));
-
-         if (ret != rasterizedPoints.end())
-         {
-         currentPolygonIndex = ret->second;
-         break;
-         }
-         }*/
     }
     else if (rightButtonUsed)
     {
-      /*
-         int x2 = (int)(x/pixel_size);
-         int y2 = (int)((win_height-y)/pixel_size);
-
-      // for the min point
-      int x1 = viewport[0];
-      int y1 = viewport[1];
-      int dx = x2 - x1;
-      int dy = y2 - y1;
-      float minDistance = sqrt((dx*dx) + (dy*dy));
-
-      x1 = viewport[2];
-      y1 = viewport[3];
-      dx = x2 - x1;
-      dy = y2 - y1;
-      float maxDistance = sqrt((dx*dx) + (dy*dy));
-
-      if (minDistance < maxDistance)
-      {
-      viewport[0] = x2;
-      viewport[1] = y2;
-      }
-      else
-      {
-      viewport[2] = x2;
-      viewport[3] = y2;
-      }
-
-      if (viewport[0] > viewport[2])
-      {
-      int temp = viewport[0];
-      viewport[0] = viewport[2];
-      viewport[2] = temp;
-      }
-      if (viewport[1] > viewport[3])
-      {
-      int temp = viewport[1];
-      viewport[1] = viewport[3];
-      viewport[3] = temp;
-      }
-
-      cout << viewport[0] << ", " << viewport[1] << ", " << viewport[2] << ", " << viewport[3] << endl;
-      */
-
     }
   }
 
