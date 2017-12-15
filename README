@@ -5,7 +5,7 @@ ID: 999702367
 
 --------------------------------------------------
 To compile:
- 1. tar -xvzf rcasteli_p1.tar
+ 1. tar -xvf rcasteli_p1.tar
  2. cd rcasteli_p1
  3. make
 
@@ -62,6 +62,7 @@ To draw lines via DDA/Bresenham:
 
 Bugs:
   1. Rasterizing doesn't always work because my scanlines can't always tell when to turn off so random lines are drawn past the polygon to the right
+  2. Expanding the window breaks being able to click on the polygon but you can still select with the numbers
 
 --------------------------------------------------
 Extra coding:

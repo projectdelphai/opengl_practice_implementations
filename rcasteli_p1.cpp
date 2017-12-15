@@ -486,10 +486,7 @@ void key(unsigned char ch, int x, int y)
   {
     save();
   }
-  else if ((int)ch > 0)
-  {
-    currentPolygonIndex = (int)ch - '0' - 1;
-  }
+  
   else if (ch == '+' || ch == '=')
   {
     if (scaleTurnedOn)
@@ -515,6 +512,10 @@ void key(unsigned char ch, int x, int y)
       polygons[currentPolygonIndex]->rotate(-1.0);
       rasterizedPoints.clear();
     }
+  }
+else if ((int)ch > 0)
+  {
+    currentPolygonIndex = (int)ch - '0' - 1;
   }
  //redraw the scene after keyboard input
   glutPostRedisplay();
