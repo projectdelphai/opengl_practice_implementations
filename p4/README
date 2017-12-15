@@ -1,0 +1,45 @@
+Title: Project 4: Bezier and B-Spline Creator and Editor
+Author: Reuben Castelino
+Class: ECS 175 - Fall 2017
+ID: 999702367
+
+--------------------------------------------------
+To compile:
+ 1. tar -xvf rcasteli_p4.tar
+ 2. cd rcasteli_p4
+ 3. make
+
+To run:
+  ./rcasteli_p4 test_file_name
+
+--------------------------------------------------
+The following commands are allowed to interact with the polygons:
+
+Selecting polygons to alter:
+  1. You can select them with numbers 1-9
+  2. The selected curve will have a red dot to signify that's the current selected curve.
+
+Creating control points:
+  1. You can create new points on the current curve by left mouse clicking
+
+Moving control points
+  1. You can select a control point of the current curve by right clicking on a control point and moving it with the right mouse button
+
+Creating curves:
+  1. You can create curves with 'n' and then left clicking
+
+Deleting curves/points:
+  1. You can delete the currently selected point with 'd'
+  2. You can delete the currently selected curve with 'D'
+
+Switching curve types:
+  1. Press 'b' to render a b-spline curve
+  2. Press 'c' to render a bezier curve
+
+Editing the degree of a b-spline curve:
+  1. Press the up arrow to increase the degree
+  2. Press the down arrow to decrease the degree
+  3. The current degree will be displayed in the program
+
+Quitting:
+  1. Pressing the "q" key will exit the program
