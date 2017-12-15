@@ -2,12 +2,14 @@
 
 using namespace std;
 
+#include "point.h"
+
 class Material
 {
   public:
-    Material(tuple<float, float, float> a, tuple<float, float, float> s, tuple<float, float, float> d, float number);
-    tuple<float, float, float> Ka;
-    tuple<float, float, float> Kd;
-    tuple<float, float, float> Ks;
+    Material(Point *a, Point *d, Point *s, float number);
+    Point *ka;
+    Point *kd;
+    Point *ks;
     int n;
 };

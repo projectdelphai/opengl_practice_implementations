@@ -21,6 +21,13 @@ Point::Point()
   z = 0;
 }
 
+Point::Point(Point *p)
+{
+  x = p->x;
+  y = p->y;
+  z = p->z;
+}
+
 PointInfo::PointInfo(bool horiz, bool vert, bool extr)
 {
   partOfHorizontal = horiz;

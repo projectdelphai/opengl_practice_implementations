@@ -1,13 +1,22 @@
+#ifndef POINT_H
+#define POINT_H
+
+#include <vector>
+
+using namespace std;
+
 class Point
 {
   public:
     Point(float x, float y, float z);
     Point(float x, float y);
     Point();
+    Point(Point *p);
     float x;
     float y;
     float z;
     float intensity;
+    vector<int> adjacentTris;
 };
 
 class PointInfo
@@ -54,3 +63,5 @@ struct PointComparatorY
       return false;
   }
 };
+
+#endif

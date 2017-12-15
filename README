@@ -1,42 +1,53 @@
-Title: Project 1: A simple two-dimensional drawing system
+Title: Project 3: Lighting Model
 Author: Reuben Castelino
 Class: ECS 175 - Fall 2017
 ID: 999702367
 
+note:
+I thought it was pretty cool :)
+  0. untar the file, make the program
+  1. run with ./rcasteli_p3 bunny.txt with a light.txt and a materials.txt
+  2. press 's' and then '+' a bunch of times to scale the bunny up enough to see the different shadings
+  3. then press 's' to turn off scaling and press 'l' to start moving the light around
+  4. use the arrow keys and the -/+ key to move the light source around and see the shading change :)
+
 --------------------------------------------------
 To compile:
- 1. tar -xvf rcasteli_p1.tar
- 2. cd rcasteli_p2
+ 1. tar -xvf rcasteli_p3.tar
+ 2. cd rcasteli_p3
  3. make
 
 To run:
-  ./rcasteli_p2 test_file_name
+  ./rcasteli_p3 test_file_name
 
 --------------------------------------------------
 The polygon data file is a basic text file with the following format:
 
 number_of_polygons
-polygon1_number_of_vertices
 descripton_of_polygon
+material number
+number of vertices
 x1 y1 z1
 x2 y2 z2
 x3 y3 z3
-number of edges
-1 2
-2 3
-1 2
-polygon2_number_of_vertices
-description_of_polygon
-x1 y1 z1
-x2 y2 z2
-x3 y3 z3
-x4 y4 z4
-x5 y5 z5
-number of edges
-1 5
-2 4
-3 1
-2 4
+number of triangles
+1 2 3
+1 3 2
+2 3 1
+
+The light file is:
+light_x light_y light_z
+la la la
+li li li
+f
+k
+
+the material file is:
+number of materials
+ka ka ka
+kd kd kd
+ks ks ks
+phong number
 
 Sample configs are given in the provided code
 
@@ -56,22 +67,36 @@ Scaling polygons:
     note: the fill color will turn red
   2. Press "+" (or "=") to scale up by 1.1
   3. Press "-" to scale down by 0.9
+  4. After scaling, press 'b' to recalculate the light modeling
 
 Rotating Polygons:
   1. "x" will rotate the polygon around it's centroid in the x direction
   2. "y" will rotate the polygon around it's centroid in the y direction
   3. "z" will rotate the polygon around it's centroid in the z direction
   note: the capital version (X/Y/Z) will rotate it the other way
-  4. If you press r, the terminal will prompt you to choose two points and a rotation angle separated by points. For example:
-      x1 y1 z1 x2 y2 z2 angleInDegrees
-      .5 .5 0 .5 .5 1 30
+
+Moving the light position:
+  1. Press r
+  2. Input the light position via:
+      x y z
+  3. you can also press l and use the arrow keys (and the -/+ keys) to move the light around dynamically
+
+Moving the from position:
+  1. press f
+  2. input the from position via:
+      x y z
+  
 
 Quitting and Saving the Polygon:
-  1. Pressing the "q" key will save the polygon and exit the program
+  1. Pressing the "q" key will exit the program
 
+Extra coding/changes
 --------------------------------------------------
+  1. I coded the light source to appear so you can get an idea of where it is
+  2. You can still transform the polygons and the shading will change based on the new position
+  3. You can also dynamically move the light around and see the light move
+  4. I optimized the code a little bit so that the bunny isn't as slow as it was in my first iteration. I calculated which triangles are attached to each vertex before i started my transformations so that when you moved the light source, it doesn't ahve to go through all the triangles and find the necessary face normals which made the program too long before
 
-Extra coding:
- 1. The fourth window (the bottom right pane) is the oblique project with an angle of 45 degrees
- 2. I kept rotations around the centroid because i thought they were fun and added the z rotation :)
- 3. I implemented Cohen_Sutherland line clipping so that when you scale or translate/rotate out of the unit box, it clips the polygon and keeps part of the line inside the view.
+Problems:
+--------------------------------------------------
+  2. It might be easier to debug by changing the glClearColor to a background of black and to change the pixel size to 2 and the grid_width/height to 500

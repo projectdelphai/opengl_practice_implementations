@@ -27,6 +27,7 @@
 #include <sstream>
 #include <set>
 #include <tuple>
+#include <algorithm>
 
 #include "polygon.h"
 #include "material.h"
@@ -57,6 +58,7 @@ bool useBresenham = false;
 bool useglLine = true;
 bool scaleTurnedOn = false;
 bool rotateTurnedOn = false;
+bool moveLight = false;
 bool leftButtonUsed = false;
 bool rightButtonUsed = false;
 bool illumination = true;
@@ -81,13 +83,13 @@ tuple<float, float, float> currentColor = blue;
 char *filename;
 
 vector<Material *> materials;
-tuple<float, float, float> Li;
-tuple<float, float, float> La;
+Point *li;
+Point *la;
 float k;
-tuple<float, float, float> light_position;
-tuple<float, float, float> from_position;
+Point *light_position;
+Point *from_position;
 
-tuple<float, float, float> lineToTuple(string line);
+Point *lineToPoint(string line);
 void processInputFile();
 void processLightFile();
 void init();
@@ -97,7 +99,7 @@ void rasterize();
 void save();
 void draw_pix(float x, float y, tuple<int, int, int> color, int intensity);
 void draw_lines(Point p1, Point p2, int viewPort, tuple<int, int, int> color);
-void draw_triangles(int indexA, int indexB, int indexC, Polygon *polygon, tuple<int, int, int> color);
+void draw_triangles(int indexA, int indexB, int indexC, Polygon *polygon, tuple<int, int, int> color, int plane);
 void draw_vertices(Polygon *polygon);
 void displayPoint(string line, Point *p);
 float findVertexIntensity(Polygon *polygon, Point *p);
@@ -109,7 +111,62 @@ void motion(int x, int y);
 void check();
 void scanline_edges(Edge e1, Edge e2, int plane, tuple<int, int, int> color);
 bool intersect_edge(float scany, const Edge& e, float &x_int);
-void render_scanline(float y, float x1, float x2, int plane, tuple<int, int, int> color);
+void render_scanline(float y, float x1, float x2, int plane, float intensity1, float intensity2, tuple<int, int, int> color);
+void recalculateNI();
+void calculateNormalsIntensities(Polygon *polygon);
+void displayVector(string s, Point *p);
+
+void displayVector(string s, Point *p)
+{
+  cout << s << ": (" << p->x << ", " << p->y << ", " << p->z << ")" << endl;
+}
+
+struct ordX
+{
+  bool operator() (Triangle *a, Triangle *b)
+  {
+    //float minT1 = a->minVertex(2);
+    float maxT1 = a->minVertex(2);
+    float maxT2 = b->minVertex(2);
+
+    //return (int)(minT1 * 10) < (int)(maxT2 * 10);
+    return (int)(maxT1 * 10) < (int)(maxT2 * 10);
+  }
+} orderByX;
+
+struct ordY
+{
+  bool operator() (Triangle *a, Triangle *b)
+  {
+    //float minT1 = a->minVertex(1);
+    float maxT1 = a->minVertex(1);
+    float maxT2 = b->minVertex(1);
+
+    //return (int)(minT1 * 10) < (int)(maxT2 * 10);
+    return (int)(maxT1 * 10) < (int)(maxT2 * 10);
+  }
+} orderByY;
+
+struct ordZ
+{
+  bool operator() (Triangle *a, Triangle *b)
+  {
+    //float minT1 = a->minVertex(0);
+    float maxT1 = a->minVertex(0);
+    float maxT2 = b->minVertex(0);
+
+    //return (int)(minT1 * 10) < (int)(maxT2 * 10);
+    return (int)(maxT1 * 10) < (int)(maxT2 * 10);
+  }
+} orderByZ;
+
+void recalculateNI()
+{
+    for (int i = 0; i < numPolygons; i++)
+    {
+      calculateNormalsIntensities(polygons[i]);
+    }
+}
 
 int main(int argc, char **argv)
 {
@@ -118,10 +175,10 @@ int main(int argc, char **argv)
   //the number of pixels in the grid
   grid_width = 500;
   grid_height = 500;
-  
+
   nextPane = 3;
 
- //the size of pixels sets the inital window height and width
+  //the size of pixels sets the inital window height and width
   //don't make the pixels too large or the screen size will be larger than
   //your display size
   pixel_size = 2;
@@ -162,22 +219,24 @@ int main(int argc, char **argv)
   return 0;
 }
 
-tuple<float, float, float> stringToTuple(string line)
+Point *stringToPoint(string line)
 {
-    size_t pos = line.find_first_of(" ");
-    size_t pos2;
+  size_t pos = line.find_first_of(" ");
+  size_t pos2;
 
-    string rawX = line.substr(0, pos);
-    pos++;
-    pos2 = line.find_first_of(" ", pos);
-    string rawY = line.substr(pos, pos2);
-    string rawZ = line.substr(pos2, string::npos);
+  string rawX = line.substr(0, pos);
+  pos++;
+  pos2 = line.find_first_of(" ", pos);
+  string rawY = line.substr(pos, pos2);
+  string rawZ = line.substr(pos2, string::npos);
 
-    float x = atof(rawX.c_str());
-    float y = atof(rawY.c_str());
-    float z = atof(rawZ.c_str());
+  float x = atof(rawX.c_str());
+  float y = atof(rawY.c_str());
+  float z = atof(rawZ.c_str());
 
-    return make_tuple(x, y, z);
+  Point *s = new Point(x, y, z);
+
+  return s;
 }
 
 // read light and material files
@@ -195,13 +254,13 @@ void processLightFile()
   {
     // ka
     getline(rawDatFile, line);
-    tuple<float, float, float> ka = stringToTuple(line);
+    Point *ka = stringToPoint(line);
     // kd
     getline(rawDatFile, line);
-    tuple<float, float, float> kd = stringToTuple(line);
+    Point *kd = stringToPoint(line);
     // ks
     getline(rawDatFile, line);
-    tuple<float, float, float> ks = stringToTuple(line);
+    Point *ks = stringToPoint(line);
 
     // n
     getline(rawDatFile, line);
@@ -217,28 +276,91 @@ void processLightFile()
 
   // light position
   getline(rawLightFile, line2);
-  light_position = stringToTuple(line2);
+  light_position = stringToPoint(line2);
 
   // La
   getline(rawLightFile, line2);
-  La = stringToTuple(line2);
+  la = stringToPoint(line2);
 
   // Li
   getline(rawLightFile, line2);
-  Li = stringToTuple(line2);
-  
+  li = stringToPoint(line2);
+
   // from position
   getline(rawLightFile, line2);
   float f = atof(line2.c_str());
-  from_position = make_tuple(.5, .5, f);
 
   // K
   getline(rawLightFile, line2);
   k = atof(line2.c_str());
+  
+  from_position = new Point(k - f, k - f, f);
+  //from_position = new Point(.5, 1 * f, .5);
 }
 
 void populatePlaneTriangles(Polygon *polygon)
 {
+  for (int i = 0; i < polygon->numTriangles; i++)
+  {
+    polygon->tXY.push_back(new Triangle(polygon->triangles[i], polygon->vertices));
+    polygon->tXZ.push_back(new Triangle(polygon->triangles[i], polygon->vertices));
+    polygon->tYZ.push_back(new Triangle(polygon->triangles[i], polygon->vertices));
+  }
+
+  sort(polygon->tXY.begin(), polygon->tXY.end(), orderByZ);
+  sort(polygon->tXZ.begin(), polygon->tXZ.end(), orderByY);
+  sort(polygon->tYZ.begin(), polygon->tYZ.end(), orderByX);
+
+}
+
+void calculateNormalsIntensities(Polygon* polygon)
+{
+    for (int j = 0; j < polygon->numTriangles; j++)
+    {
+      Triangle *tri = polygon->triangles[j];
+      Point *p0 = polygon->vertices[tri->vertex1];
+      Point *p1 = polygon->vertices[tri->vertex2];
+      Point *p2 = polygon->vertices[tri->vertex3];
+
+      Point *V = new Point(p1->x - p0->x, p1->y - p0->y, p1->z - p0->z);
+      Point *W = new Point(p2->x - p0->x, p2->y - p0->y, p2->z - p0->z);
+
+      Point *normal = new Point(V->y*W->z - V->z*W->y, V->z*W->x - V->x*W->z, V->x*W->y - V->y*W->x);
+      float mag = sqrt(normal->x*normal->x + normal->y*normal->y + normal->z*normal->z);
+      Point *nn = new Point(normal->x / mag, normal->y / mag, normal->z / mag);
+
+      polygon->triangles[j]->faceNormal = new Point(nn->x, nn->y, nn->z);
+    }
+
+    float imin = 0;
+    float imax = 0;
+    vector<float> rawIntensities;
+
+    for (int x = 0; x < polygon->numVertices; x++)
+    {
+      Point *p = polygon->vertices[x];
+      float intensity = findVertexIntensity(polygon, p);
+
+      if (intensity < imin)
+        imin = intensity;
+      if (intensity > imax)
+        imax = intensity;
+
+      polygon->vertices[x]->intensity = intensity;
+
+      //rawIntensities.push_back(intensity);
+    }
+
+    for (int x = 0; x < polygon->numVertices; x++)
+    {
+      float rawI = polygon->vertices[x]->intensity;
+      float intensity = (rawI - imin) / (imax - imin);
+      
+      intensity = round(intensity * 10);
+
+      polygon->vertices[x]->intensity = intensity;
+
+    }
 
 }
 
@@ -328,62 +450,33 @@ void processInputFile()
       int p3 = atoi(rawP3.c_str());
 
       Triangle *t = new Triangle(p1 - 1, p2 - 1, p3 - 1);
+      t->polygonID = i;
 
       polygon->triangles.push_back(t);
 
     }
     populatePlaneTriangles(polygon);
 
+    for (int j = 0; j < numVertices; j++)
+    {
+      Point *p = polygon->vertices[j];
+      for (int x = 0; x < polygon->numTriangles; x++)
+      {
+        Triangle *t = polygon->triangles[x];
+
+        if (t->containsVertex(p, polygon->vertices))
+        {
+          polygon->vertices[j]->adjacentTris.push_back(x);
+        }
+      }
+
+
+    }
+
 
     polygon->calculateCentroid();
 
-    for (int j = 0; j < polygon->numTriangles; j++)
-    {
-      Triangle *tri = polygon->triangles[j];
-      Point *p0 = polygon->vertices[tri->vertex1];
-      Point *p1 = polygon->vertices[tri->vertex2];
-      Point *p2 = polygon->vertices[tri->vertex3];
-
-      Point *V = new Point(p1->x - p0->x, p1->y - p0->y, p1->z - p0->z);
-      Point *W = new Point(p2->x - p0->x, p2->y - p0->y, p2->z - p0->z);
-
-      Point *normal = new Point(V->y*W->z - V->z*W->y, V->z*W->x - V->x*W->z, V->x*W->y - V->y*W->x);
-      float mag = sqrt(normal->x*normal->x + normal->y*normal->y + normal->z*normal->z);
-      Point *nn = new Point(normal->x / mag, normal->y / mag, normal->z / mag);
-
-      polygon->triangles[j]->faceNormal = new Point(nn->x, nn->y, nn->z);
-    }
-
-    float imin = 0;
-    float imax = 0;
-    vector<float> rawIntensities;
-
-    for (int x = 0; x < polygon->numVertices; x++)
-    {
-      Point *p = polygon->vertices[x];
-      float intensity = findVertexIntensity(polygon, p);
-
-      if (intensity < imin)
-        imin = intensity;
-      if (intensity > imax)
-        imax = intensity;
-
-      polygon->vertices[x]->intensity = intensity;
-
-      //rawIntensities.push_back(intensity);
-    }
-
-    for (int x = 0; x < polygon->numVertices; x++)
-    {
-      float rawI = polygon->vertices[x]->intensity;
-      float intensity = (rawI - imin) / (imax - imin);
-
-      intensity = round(intensity * 10);
-
-      polygon->vertices[x]->intensity = intensity;
-
-      //polygon->intensities.push_back(intensity);
-    }
+    calculateNormalsIntensities(polygon);
 
     polygons.push_back(polygon);
 
@@ -395,6 +488,7 @@ void processInputFile()
 void init()
 {
   //set clear color (Default background to white)
+  //glClearColor(0.0,0.0,0.0,0.0);
   glClearColor(1.0,1.0,1.0,1.0);
   //checks for OpenGL errors
   check();
@@ -410,12 +504,13 @@ void idle()
 //this is where we render the screen
 void display()
 {
+
   //clears the screen
   glClear(GL_DEPTH_BUFFER_BIT|GL_COLOR_BUFFER_BIT);
   //clears the opengl Modelview transformation matrix
   glLoadIdentity();
 
-  int i = 0;
+    int i = 0;
   // for every polygon, draw it out
   for (vector<Polygon *>::iterator it = polygons.begin(); it != polygons.end(); it++)
   {
@@ -432,17 +527,35 @@ void display()
 
     for (int triangleIndex = 0; triangleIndex < polygon->numTriangles; triangleIndex++)
     {
-      int indexA = polygon->triangles[triangleIndex]->vertex1;
-      int indexB = polygon->triangles[triangleIndex]->vertex2;
-      int indexC = polygon->triangles[triangleIndex]->vertex3;
+      int XYindexA = polygon->tXY[triangleIndex]->vertex1;
+      int XYindexB = polygon->tXY[triangleIndex]->vertex2;
+      int XYindexC = polygon->tXY[triangleIndex]->vertex3;
 
-      draw_triangles(indexA, indexB, indexC, polygon, color);
+      int XZindexA = polygon->tXZ[triangleIndex]->vertex1;
+      int XZindexB = polygon->tXZ[triangleIndex]->vertex2;
+      int XZindexC = polygon->tXZ[triangleIndex]->vertex3;
+
+      int YZindexA = polygon->tYZ[triangleIndex]->vertex1;
+      int YZindexB = polygon->tYZ[triangleIndex]->vertex2;
+      int YZindexC = polygon->tYZ[triangleIndex]->vertex3;
+
+      draw_triangles(XYindexA, XYindexB, XYindexC, polygon, color, 0);
+      draw_triangles(XZindexA, XZindexB, XZindexC, polygon, color, 1);
+      draw_triangles(YZindexA, YZindexB, YZindexC, polygon, color, 2);
     }
 
-    draw_vertices(polygon);
+    //draw_vertices(polygon);
 
     i++;
   }
+
+  // XY
+  draw_pix(light_position->x * 3, light_position->y * 3 + 3, red, 0);
+  // XZ
+  draw_pix(light_position->x * 3 + 3, light_position->z * 3 + 3, red, 0);
+  // YZ
+  draw_pix(light_position->y * 3, light_position->z * 3, red, 0);
+
 
 
   //blits the current opengl framebuffer on the screen
@@ -489,15 +602,12 @@ float findVertexIntensity(Polygon *polygon, Point *p)
   // set up
   Material *material = materials[polygon->materialID - 1];
 
-  Point *ka = new Point(get<0>(material->Ka), get<1>(material->Ka), get<2>(material->Ka));
-  Point *kd = new Point(get<0>(material->Kd), get<1>(material->Kd), get<2>(material->Kd));
-  Point *ks = new Point(get<0>(material->Ks), get<1>(material->Ks), get<2>(material->Ks));
-  Point *li = new Point(get<0>(Li), get<1>(Li), get<2>(Li));
-  Point *la= new Point(get<0>(La), get<1>(La), get<2>(La));
+  Point *ka = new Point(material->ka);
+  Point *kd = new Point(material->kd);
+  Point *ks = new Point(material->ks);
 
-  Point *f = new Point(get<0>(from_position), get<1>(from_position), get<2>(from_position));
-  Point *x = new Point(get<0>(light_position), get<1>(light_position), get<2>(light_position));
-
+  Point *f = from_position;
+  Point *x = light_position;
 
   Point *XminusP = new Point(x->x - p->x, x->y - p->y, x->z - p->z);
   Point *FminusP = new Point(f->x - p->x, f->y - p->y, f->z - p->z);
@@ -507,24 +617,20 @@ float findVertexIntensity(Polygon *polygon, Point *p)
 
   // vectors
   Point *l = new Point(XminusP->x / magXminusP, XminusP->y / magXminusP, XminusP->z / magXminusP);
+
   Point *v = new Point(FminusP->x / magFminusP, FminusP->y / magFminusP, FminusP->z / magFminusP);
 
   // n vector is the average of all the face vectors of triangles containing the vertex
   Point *rawN = new Point(0, 0, 0);
   int count = 0;
 
-  for (int i = 0; i < polygon->numTriangles; i++)
-  {
-    Triangle *t = polygon->triangles[i];
-
-    if (t->containsVertex(p, polygon->vertices))
+    for (int j = 0; j < p->adjacentTris.size(); j++)
     {
       count++;
-      rawN->x += t->faceNormal->x;
-      rawN->y += t->faceNormal->y;
-      rawN->z += t->faceNormal->z;
+      rawN->x += polygon->triangles[p->adjacentTris[j]]->faceNormal->x;
+      rawN->y += polygon->triangles[p->adjacentTris[j]]->faceNormal->y;
+      rawN->z += polygon->triangles[p->adjacentTris[j]]->faceNormal->z;
     }
-  }
 
   float nmag = sqrt(rawN->x*rawN->x + rawN->y*rawN->y + rawN->z*rawN->z);
   // normalizing n
@@ -538,38 +644,50 @@ float findVertexIntensity(Polygon *polygon, Point *p)
   float rmag = sqrt(rawR->x*rawR->x + rawR->y*rawR->y + rawR->z*rawR->z);
   Point *r = new Point(rawR->x / rmag, rawR->y / rmag, rawR->z / rmag);
 
-
-  // calculations for simple math
-  float rKaIa = ka->x * la->x;
-
-  float magplusk = magFminusP + k;
-  float rLidividedby = li->x / magplusk;
-
-  float rkdldotn = kd->x * ldotn;
   float rdotv = r->x*v->x + r->y*v->y + r->z*v->z;
 
-  // start combining terms;
-  float rdotvpower = pow(rdotv, material->n);
-  float rksrdotvpower = ks->x * rdotvpower;
+  float intensity = (ka->x*la->x) + ((li->x)/(magFminusP + k))*((kd->x*ldotn) + (ks->x*(pow(rdotv, material->n))));
 
-  float rs = rkdldotn + rksrdotvpower;
-  float rs2 = rLidividedby * rs;
-  float rrawI = rKaIa + rs2;
 
-  return rrawI;
+    /*cout << "r.v: " << rdotv << endl;
+    cout << "l.n: " << ldotn << endl;
+    cout << "magFminusP: " << magFminusP << endl;
+    cout << "materialn: " << material->n << endl;
+    cout << "k: " << k << endl;
+    displayVector("vertex", p);
+    displayVector("ka", ka);
+    displayVector("kd", kd);
+    displayVector("ks", ks);
+    displayVector("li", li);
+    displayVector("la", la);
+    displayVector("from position", f);
+    displayVector("light position", x);
+    displayVector("l", l);
+    displayVector("v", v);
+    displayVector("n", n);
+    displayVector("r", r);
+    cout << endl;*/
+    /*displayVector("vertex", p);
+    displayVector("n", n);
+    cout << "ambient: " << ka->x*la->x << endl;
+    cout << "diffuse: " << kd->x*ldotn << endl;
+    cout << "specular: " << ks->x*(pow(rdotv, material->n)) << endl;
+    cout << "intensity: " << intensity << endl;
+    cout << endl << endl;*/
+
+  return intensity;
 }
 
 void scanline_edges(Edge e1, Edge e2, int plane, tuple<int, int, int> color)
 {
   if (e1.p1->y == e1.p2->y)
   {
-    //cout << "(" << e1.p1->x << ", " << e1.p1->y << ") -> (" << e1.p2->x << ", " << e1.p1->y << ")" << endl;
-    render_scanline(e1.p1->y, e1.p1->x, e1.p2->x, plane, color);
+    render_scanline(e1.p1->y, e1.p1->x, e1.p2->x, plane, e1.p1->intensity, e1.p2->intensity, color);
     return;
   }
   if (e2.p1->y == e2.p2->y)
   {
-    render_scanline(e2.p2->y, e2.p1->x, e2.p2->x, plane, color);
+    render_scanline(e2.p2->y, e2.p1->x, e2.p2->x, plane, e2.p1->intensity, e2.p2->intensity, color);
     return;
   }
 
@@ -578,24 +696,23 @@ void scanline_edges(Edge e1, Edge e2, int plane, tuple<int, int, int> color)
 
   for (float y = ymin; y <= ymax; y+=1.0)
   {
-    /*cout << "b" << endl;
-      cout << "e1->p1: " << e1.p1->x << ", " << e1.p1->y << " : e1->p2: " << e1.p2->x << ", " << e1.p2->y << endl;
-      cout << "e2->p1: " << e2.p1->x << ", " << e2.p1->y << " : e2->p2: " << e2.p2->x << ", " << e2.p2->y << endl;*/
     float x1, x2;
     intersect_edge(y, e1, x1);
     intersect_edge(y, e2, x2);
-    /*cout << "c" << endl;
-      cout << "x1: " << x1 << ", x2: " << x2 << endl;*/
+
+    float intensity1 = (((y-e1.p1->y)/(e1.p2->y-e1.p1->y))*(e1.p2->intensity)) + (((e1.p2->y-y)/(e1.p2->y-e1.p1->y))*(e1.p1->intensity));
+    float intensity2 = (((y-e2.p1->y)/(e2.p2->y-e2.p1->y))*(e2.p2->intensity)) + (((e2.p2->y-y)/(e2.p2->y-e2.p1->y))*(e2.p1->intensity));
 
     if (x1 < x2)
-      render_scanline(y, x1, x2, plane, color);
+      render_scanline(y, x1, x2, plane, intensity1, intensity2, color);
     else
-      render_scanline(y, x2, x1, plane, color);
+      render_scanline(y, x2, x1, plane, intensity2, intensity1, color);
   }
 
 }
 
 bool intersect_edge(float scany, const Edge& e, float &x_int){
+
   // parallel lines
   if(e.p2->y==e.p1->y) 
     return false;
@@ -605,194 +722,208 @@ bool intersect_edge(float scany, const Edge& e, float &x_int){
 }
 
 //could include intensity values and use those to interpolate here
-void render_scanline(float y, float x1, float x2, int plane, tuple<int,int,int> color){
-  //cout << "x1: " << x1 << endl;
+void render_scanline(float y, float x1, float x2, int plane, float intensity1, float intensity2, tuple<int,int,int> color){
   int py=(int)floor(y);
 
   for(int px = (int)floor(x1); px < x2; px++)
   {
     float px2 = px / 100.0;
     float py2 = py / 100.0;
-    //cout << "px2: " << px2 << ", py2: " << py2 << ", x2: " << x2 << endl;
-    if (plane == 1)
-      draw_pix(px2 * 3, py2 * 3 + nextPane, color, 9);
-    else if (plane == 2)
-      draw_pix(px2 * 3 + nextPane, py2 * 3 + nextPane, color, 9);
-    else if (plane == 3)
-      draw_pix(px2 * 3, py2 * 3, color, 9);
 
-    //draw_fbpix(px,py,1.0);
+    float rawIntensity = (((x2-px)/(x2-x1))*intensity1)+(((px-x1)/(x2-x1))*intensity2);
+
+    int intensity = round(rawIntensity);
+
+    if (plane == 0)
+      draw_pix(px2 * 3, py2 * 3 + nextPane, color, intensity);
+    else if (plane == 1)
+      draw_pix(px2 * 3 + nextPane, py2 * 3 + nextPane, color, intensity);
+    else if (plane == 2)
+      draw_pix(px2 * 3, py2 * 3, color, intensity);
+
   }
 }
 
-void draw_triangles(int indexA, int indexB, int indexC, Polygon *polygon, tuple<int, int, int> color)
+void draw_triangles(int indexA, int indexB, int indexC, Polygon *polygon, tuple<int, int, int> color, int plane)
 {
   Point *p1 = polygon->vertices[indexA];
   Point *p2 = polygon->vertices[indexB];
   Point *p3 = polygon->vertices[indexC];
 
-  /*int i1 = polygon->intensities[indexA];
-    int i2 = polygon->intensities[indexB];
-    int i3 = polygon->intensities[indexC];
-    int factor = 3;*/
-
   Edge e1, e2, e3;
 
-  // XY
-  if (p1->y < p2->y)
+  if (plane == 0)
   {
-    e1.p1 = new Point(p1->x, p1->y);
-    e1.p2 = new Point(p2->x, p2->y);
-  }
-  else
-  {
-    e1.p1 = new Point(p2->x, p2->y);
-    e1.p2 = new Point(p1->x, p1->y);
-  }
-  if (p1->y < p3->y)
-  {
-    e2.p1 = new Point(p1->x, p1->y);
-    e2.p2 = new Point(p3->x, p3->y);
-  }
-  else
-  {
-    e2.p1 = new Point(p3->x, p3->y);
-    e2.p2 = new Point(p1->x, p1->y);
-  }
-  if (p2->y < p3->y)
-  {
-    e3.p1 = new Point(p2->x, p2->y);
-    e3.p2 = new Point(p3->x, p3->y);
-  }
-  else
-  {
-    e3.p1 = new Point(p3->x, p3->y);
-    e3.p2 = new Point(p2->x, p2->y);
+    // XY
+    if (p1->y < p2->y)
+    {
+      e1.p1 = new Point(p1->x, p1->y);
+      e1.p2 = new Point(p2->x, p2->y);
+      e1.p1->intensity = p1->intensity;
+      e1.p2->intensity = p2->intensity;
+    }
+    else
+    {
+      e1.p1 = new Point(p2->x, p2->y);
+      e1.p2 = new Point(p1->x, p1->y);
+      e1.p1->intensity = p2->intensity;
+      e1.p2->intensity = p1->intensity;
+    }
+    if (p1->y < p3->y)
+    {
+      e2.p1 = new Point(p1->x, p1->y);
+      e2.p2 = new Point(p3->x, p3->y);
+      e2.p1->intensity = p1->intensity;
+      e2.p2->intensity = p3->intensity;
+    }
+    else
+    {
+      e2.p1 = new Point(p3->x, p3->y);
+      e2.p2 = new Point(p1->x, p1->y);
+      e2.p1->intensity = p3->intensity;
+      e2.p2->intensity = p1->intensity;
+    }
+    if (p2->y < p3->y)
+    {
+      e3.p1 = new Point(p2->x, p2->y);
+      e3.p2 = new Point(p3->x, p3->y);
+      e3.p1->intensity = p2->intensity;
+      e3.p2->intensity = p3->intensity;
+    }
+    else
+    {
+      e3.p1 = new Point(p3->x, p3->y);
+      e3.p2 = new Point(p2->x, p2->y);
+      e3.p1->intensity = p3->intensity;
+      e3.p2->intensity = p2->intensity;
+    }
+
+    e1.scaleUp();
+    e2.scaleUp();
+    e3.scaleUp();
+    scanline_edges(e1, e2, plane, color);
+    scanline_edges(e1, e3, plane, color);
+    scanline_edges(e2, e3, plane, color);
+    e1.scaleDown();
+    e2.scaleDown();
+    e3.scaleDown();
   }
 
-  e1.scaleUp();
-  e2.scaleUp();
-  e3.scaleUp();
-  scanline_edges(e1, e2, 1, color);
-  scanline_edges(e1, e3, 1, color);
-  scanline_edges(e2, e3, 1, color);
-  e1.scaleDown();
-  e2.scaleDown();
-  e3.scaleDown();
+  else if (plane == 1)
+  {
 
-  // XZ
-  if (p1->z < p2->z)
-  {
-    e1.p1 = new Point(p1->x, p1->z);
-    e1.p2 = new Point(p2->x, p2->z);
-  }
-  else
-  {
-    e1.p1 = new Point(p2->x, p2->z);
-    e1.p2 = new Point(p1->x, p1->z);
-  }
-  if (p1->z < p3->z)
-  {
-    e2.p1 = new Point(p1->x, p1->z);
-    e2.p2 = new Point(p3->x, p3->z);
-  }
-  else
-  {
-    e2.p1 = new Point(p3->x, p3->z);
-    e2.p2 = new Point(p1->x, p1->z);
-  }
-  if (p2->z < p3->z)
-  {
-    e3.p1 = new Point(p2->x, p2->z);
-    e3.p2 = new Point(p3->x, p3->z);
-  }
-  else
-  {
-    e3.p1 = new Point(p3->x, p3->z);
-    e3.p2 = new Point(p2->x, p2->z);
-  }
+    // XZ
+    if (p1->z < p2->z)
+    {
+      e1.p1 = new Point(p1->x, p1->z);
+      e1.p2 = new Point(p2->x, p2->z);
+      e1.p1->intensity = p1->intensity;
+      e1.p2->intensity = p2->intensity;
+    }
+    else
+    {
+      e1.p1 = new Point(p2->x, p2->z);
+      e1.p2 = new Point(p1->x, p1->z);
+      e1.p1->intensity = p2->intensity;
+      e1.p2->intensity = p1->intensity;
+    }
+    if (p1->z < p3->z)
+    {
+      e2.p1 = new Point(p1->x, p1->z);
+      e2.p2 = new Point(p3->x, p3->z);
+      e2.p1->intensity = p1->intensity;
+      e2.p2->intensity = p3->intensity;
+    }
+    else
+    {
+      e2.p1 = new Point(p3->x, p3->z);
+      e2.p2 = new Point(p1->x, p1->z);
+      e2.p1->intensity = p3->intensity;
+      e2.p2->intensity = p1->intensity;
+    }
+    if (p2->z < p3->z)
+    {
+      e3.p1 = new Point(p2->x, p2->z);
+      e3.p2 = new Point(p3->x, p3->z);
+      e3.p1->intensity = p2->intensity;
+      e3.p2->intensity = p3->intensity;
+    }
+    else
+    {
+      e3.p1 = new Point(p3->x, p3->z);
+      e3.p2 = new Point(p2->x, p2->z);
+      e3.p1->intensity = p3->intensity;
+      e3.p2->intensity = p2->intensity;
+    }
 
-  e1.scaleUp();
-  e2.scaleUp();
-  e3.scaleUp();
-  scanline_edges(e1, e2, 2, color);
-  scanline_edges(e1, e3, 2, color);
-  scanline_edges(e2, e3, 2, color);
-  e1.scaleDown();
-  e2.scaleDown();
-  e3.scaleDown();
-
-  // YZ
-  if (p1->z < p2->z)
-  {
-    e1.p1 = new Point(p1->y, p1->z);
-    e1.p2 = new Point(p2->y, p2->z);
-  }
-  else
-  {
-    e1.p1 = new Point(p2->y, p2->z);
-    e1.p2 = new Point(p1->y, p1->z);
-  }
-  if (p1->z < p3->z)
-  {
-    e2.p1 = new Point(p1->y, p1->z);
-    e2.p2 = new Point(p3->y, p3->z);
-  }
-  else
-  {
-    e2.p1 = new Point(p3->y, p3->z);
-    e2.p2 = new Point(p1->y, p1->z);
-  }
-  if (p2->z < p3->z)
-  {
-    e3.p1 = new Point(p2->y, p2->z);
-    e3.p2 = new Point(p3->y, p3->z);
-  }
-  else
-  {
-    e3.p1 = new Point(p3->y, p3->z);
-    e3.p2 = new Point(p2->y, p2->z);
+    e1.scaleUp();
+    e2.scaleUp();
+    e3.scaleUp();
+    scanline_edges(e1, e2, plane, color);
+    scanline_edges(e1, e3, plane, color);
+    scanline_edges(e2, e3, plane, color);
+    e1.scaleDown();
+    e2.scaleDown();
+    e3.scaleDown();
   }
 
-  e1.scaleUp();
-  e2.scaleUp();
-  e3.scaleUp();
-  scanline_edges(e1, e2, 3, color);
-  scanline_edges(e1, e3, 3, color);
-  scanline_edges(e2, e3, 3, color);
-  e1.scaleDown();
-  e2.scaleDown();
-  e3.scaleDown();
-  /*// have opengl draw lines for you
-  // XY
-  draw_lines(Point(p1->x, p1->y+1), Point(p2->x, p2->y+1), 1, color);
-  draw_lines(Point(p2->x, p2->y+1), Point(p3->x, p3->y+1), 1, color);
-  draw_lines(Point(p3->x, p3->y+1), Point(p1->x, p1->y+1), 1, color);
-  // XZ
-  draw_lines(Point(p1->x+1, p1->z+1), Point(p2->x+1, p2->z+1), 2, color);
-  draw_lines(Point(p2->x+1, p2->z+1), Point(p3->x+1, p3->z+1), 2, color);
-  draw_lines(Point(p3->x+1, p3->z+1), Point(p1->x+1, p1->z+1), 2, color);
-  // YZ
-  draw_lines(Point(p1->y, p1->z), Point(p2->y, p2->z), 3, color);
-  draw_lines(Point(p2->y, p2->z), Point(p3->y, p3->z), 3, color);
-  draw_lines(Point(p3->y, p3->z), Point(p1->y, p1->z), 3, color);
+  else if (plane == 2)
+  {
 
-  // OBLIQUE
-  float degrees = 45;
-  float angleInRadians = (degrees * M_PI) / 180;
-  float x1 = p1->x + .5 * p1->z * cos(angleInRadians);
-  float y1 = p1->y + .5 * p1->z * sin(angleInRadians);
+    // YZ
+    if (p1->z < p2->z)
+    {
+      e1.p1 = new Point(p1->y, p1->z);
+      e1.p2 = new Point(p2->y, p2->z);
+      e1.p1->intensity = p1->intensity;
+      e1.p2->intensity = p2->intensity;
+    }
+    else
+    {
+      e1.p1 = new Point(p2->y, p2->z);
+      e1.p2 = new Point(p1->y, p1->z);
+      e1.p1->intensity = p2->intensity;
+      e1.p2->intensity = p1->intensity;
+    }
+    if (p1->z < p3->z)
+    {
+      e2.p1 = new Point(p1->y, p1->z);
+      e2.p2 = new Point(p3->y, p3->z);
+      e2.p1->intensity = p1->intensity;
+      e2.p2->intensity = p3->intensity;
+    }
+    else
+    {
+      e2.p1 = new Point(p3->y, p3->z);
+      e2.p2 = new Point(p1->y, p1->z);
+      e2.p1->intensity = p3->intensity;
+      e2.p2->intensity = p1->intensity;
+    }
+    if (p2->z < p3->z)
+    {
+      e3.p1 = new Point(p2->y, p2->z);
+      e3.p2 = new Point(p3->y, p3->z);
+      e3.p1->intensity = p2->intensity;
+      e3.p2->intensity = p3->intensity;
+    }
+    else
+    {
+      e3.p1 = new Point(p3->y, p3->z);
+      e3.p2 = new Point(p2->y, p2->z);
+      e3.p1->intensity = p3->intensity;
+      e3.p2->intensity = p2->intensity;
+    }
 
-  float x2 = p2->x + .5 * p2->z * cos(angleInRadians);
-  float y2 = p2->y + .5 * p2->z * sin(angleInRadians);
-
-  float x3 = p3->x + .5 * p3->z * cos(angleInRadians);
-  float y3 = p3->y + .5 * p3->z * sin(angleInRadians);
-
-  draw_lines(Point(x1+1, y1), Point(x2+1, y2), 4, color);
-  draw_lines(Point(x2+1, y2), Point(x3+1, y3), 4, color);
-  draw_lines(Point(x3+1, y3), Point(x1+1, y1), 4, color);
-  */
+    e1.scaleUp();
+    e2.scaleUp();
+    e3.scaleUp();
+    scanline_edges(e1, e2, plane, color);
+    scanline_edges(e1, e3, plane, color);
+    scanline_edges(e2, e3, plane, color);
+    e1.scaleDown();
+    e2.scaleDown();
+    e3.scaleDown();
+  }
 }
 
 void save()
@@ -829,8 +960,32 @@ void save()
 //don't change anything in this for project 1
 void draw_pix(float x, float y, tuple<int, int, int> color, int intensity)
 {
+
+  // dark points
   glBegin(GL_POINTS);
   glColor3f(get<0>(color),get<1>(color),get<2>(color));
+  if (intensity < 1)
+    glVertex3f(x+.01, y+.01, 0); // 1
+  if (intensity < 2)
+    glVertex3f(x+.02, y+.01, 0); // 2
+  if (intensity < 3)
+    glVertex3f(x+.01, y+.02, 0); // 3
+  if (intensity < 4)
+    glVertex3f(x+.00, y+.00, 0); // 4
+  if (intensity < 5)
+    glVertex3f(x+.00, y+.01, 0); // 5
+  if (intensity < 6)
+    glVertex3f(x+.02, y+.00, 0); // 6
+  if (intensity < 7)
+    glVertex3f(x+.02, y+.02, 0); // 7
+  if (intensity < 8)
+    glVertex3f(x+.00, y+.02, 0); // 8
+  if (intensity < 9)
+    glVertex3f(x+.01, y+.00, 0); // 9
+  glEnd();
+  // white points
+  glBegin(GL_POINTS);
+  glColor3f(1, 1, 1);
   if (intensity > 0)
     glVertex3f(x+.01, y+.01, 0); // 1
   if (intensity > 1)
@@ -1032,8 +1187,8 @@ void key(unsigned char ch, int x, int y)
   else if (ch == 'r')
   {
     string x;
-    cout << "Please enter point 1, point 2, and the rotation angle in the following format:" << endl;
-    cout << "x1 y1 z1 x2 y2 z2 angle" << endl;
+    cout << "Please enter the light position:" << endl;
+    cout << "x y z" << endl;
 
     getline(cin, x);
     istringstream s(x);
@@ -1047,77 +1202,94 @@ void key(unsigned char ch, int x, int y)
     float p1x = atof(components[0].c_str());
     float p1y = atof(components[1].c_str());
     float p1z = atof(components[2].c_str());
-    float p2x = atof(components[3].c_str());
-    float p2y = atof(components[4].c_str());
-    float p2z = atof(components[5].c_str());
-    float angle = atof(components[6].c_str());
 
-    Point p1 = Point(p1x, p1y, p1z);
-    Point p2 = Point(p2x, p2y, p2z);
+    light_position = new Point(p1x, p1y, p1z);
 
-    polygons[currentPolygonIndex]->specialRotate(p1, p2, angle);
-
-    rotatep1 = p1;
-    rotatep2 = p2;
+    recalculateNI();
 
   }
-  else if (ch == 'p')
+  else if (ch == 'f')
   {
-    // cycle through colors
-    tuple<float, float, float> c = currentColor;
-    float first_color = get<0>(c);
-    float second_color = get<1>(c);
-    float third_color = get<2>(c);
+    string x;
+    cout << "Please enter the from point:" << endl;
+    cout << "x y z" << endl;
 
-    if ((int)first_color == 1)
+    getline(cin, x);
+    istringstream s(x);
+    vector<string> components;
+
+    for (string key; s >> key;)
     {
-      first_color = 0.0;
-      second_color += 0.1;
+      components.push_back(key);
     }
-    else if ((int)second_color == 1)
-    {
-      second_color = 0;
-      third_color += 0.1;
-    }
-    else if ((int)third_color == 1)
-    {
-      third_color = 0;
-      first_color += 0.1;
-    }
+
+    float p1x = atof(components[0].c_str());
+    float p1y = atof(components[1].c_str());
+    float p1z = atof(components[2].c_str());
+
+    from_position = new Point(p1x, p1y, p1z);
+
+    recalculateNI();
+  }
+  else if (ch == 'l')
+  {
+    moveLight = !moveLight;
+    if (moveLight == true)
+      cout << "Ability to move light turned on" << endl;
     else
-      first_color += 0.1;
+      cout << "Ability to move light turned off" << endl;
 
-    cout << first_color << ", " << second_color << ", " << third_color << endl;
-    currentColor = tuple<float, float, float>(first_color, second_color, third_color);
-
+  }
+  else if (ch == 'b')
+  {
+    recalculateNI();
   }
   else if (ch == 'z')
+  {
     polygons[currentPolygonIndex]->rotate(1.0, 0);
+    recalculateNI();
+  }
   else if (ch == 'Z')
+  {
     polygons[currentPolygonIndex]->rotate(-1.0, 0);
+    recalculateNI();
+  }
   else if (ch == 'x')
+  {
     polygons[currentPolygonIndex]->rotate(1.0, 1);
+    recalculateNI();
+  }
   else if (ch == 'X')
+  {
     polygons[currentPolygonIndex]->rotate(-1.0, 1);
+    recalculateNI();
+  }
   else if (ch == 'y')
+  {
     polygons[currentPolygonIndex]->rotate(1.0, 2);
+    recalculateNI();
+  }
   else if (ch == 'Y')
+  {
     polygons[currentPolygonIndex]->rotate(-1.0, 2);
+    recalculateNI();
+  }
   else if (ch == 'q')
   {
     //save();
     exit(0);
-  }
-  else if (ch == 'w')
-  {
-    illumination = !illumination;
   }
   else if (ch == '+' || ch == '=')
   {
     if (scaleTurnedOn)
     {
       polygons[currentPolygonIndex]->scale(1.05, 1.05, 1.05);
-      rasterizedPoints.clear();
+    }
+    else if (!scaleTurnedOn && moveLight)
+    {
+      light_position = new Point(light_position->x, light_position->y, light_position->z+.1);
+      displayVector("light", light_position);
+      recalculateNI();
     }
     else if (!scaleTurnedOn && !rotateTurnedOn)
     {
@@ -1125,6 +1297,8 @@ void key(unsigned char ch, int x, int y)
       float centery = polygons[currentPolygonIndex]->centroid.y;
       float centerz = polygons[currentPolygonIndex]->centroid.z;
       polygons[currentPolygonIndex]->translate(Point(centerx, centery, centerz + .1));
+
+      recalculateNI();
     }
   }
   else if (ch == '-')
@@ -1132,14 +1306,23 @@ void key(unsigned char ch, int x, int y)
     if (scaleTurnedOn)
     {
       polygons[currentPolygonIndex]->scale(.9, .9, .9);
-      rasterizedPoints.clear();
+      recalculateNI();
     }
+    else if (!scaleTurnedOn && moveLight)
+    {
+      light_position = new Point(light_position->x, light_position->y, light_position->z-.1);
+      displayVector("light", light_position);
+      recalculateNI();
+    }
+
     else if (!scaleTurnedOn && !rotateTurnedOn)
     {
       float centerx = polygons[currentPolygonIndex]->centroid.x;
       float centery = polygons[currentPolygonIndex]->centroid.y;
       float centerz = polygons[currentPolygonIndex]->centroid.z;
       polygons[currentPolygonIndex]->translate(Point(centerx, centery, centerz - .1));
+
+      recalculateNI();
     }
 
   }
@@ -1158,19 +1341,55 @@ void specialKey(int key, int x, int y)
   float centerz = polygons[currentPolygonIndex]->centroid.z;
   if (key == GLUT_KEY_RIGHT)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx + .1, centery, centerz));
+    if (moveLight)
+    {
+      light_position = new Point(light_position->x+.1, light_position->y, light_position->z);
+      displayVector("light", light_position);
+    }
+    else
+    {
+      polygons[currentPolygonIndex]->translate(Point(centerx + .1, centery, centerz));
+    }
+    recalculateNI();
   }
   else if (key == GLUT_KEY_LEFT)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx - .1, centery, centerz));
+    if (moveLight)
+    {
+      light_position = new Point(light_position->x-.1, light_position->y, light_position->z);
+      displayVector("light", light_position);
+    }
+    else
+    {
+      polygons[currentPolygonIndex]->translate(Point(centerx - .1, centery, centerz));
+    }
+    recalculateNI();
   }
   else if (key == GLUT_KEY_UP)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx, centery + .1, centerz));
+    if (moveLight)
+    {
+      light_position = new Point(light_position->x, light_position->y+.1, light_position->z);
+      displayVector("light", light_position);
+    }
+    else
+    {
+      polygons[currentPolygonIndex]->translate(Point(centerx, centery + .1, centerz));
+    }
+    recalculateNI();
   }
   else if (key == GLUT_KEY_DOWN)
   {
-    polygons[currentPolygonIndex]->translate(Point(centerx, centery - .1, centerz));
+    if (moveLight)
+    {
+      light_position = new Point(light_position->x, light_position->y-.1, light_position->z);
+      displayVector("light", light_position);
+    }
+    else
+    {
+      polygons[currentPolygonIndex]->translate(Point(centerx, centery - .1, centerz));
+    }
+    recalculateNI();
   }
 }
 

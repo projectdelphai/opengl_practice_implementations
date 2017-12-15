@@ -1,4 +1,7 @@
-class Point;
+#ifndef EDGE_H
+#define EDGE_H
+
+#include "point.h"
 
 class Edge
 {
@@ -8,3 +11,5 @@ class Edge
     void scaleUp();
     void scaleDown();
 };
+
+#endif

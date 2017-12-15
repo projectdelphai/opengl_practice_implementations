@@ -1,13 +1,14 @@
 #include <tuple>
 
 #include "material.h"
+#include "point.h"
 
 using namespace std;
 
-Material::Material(tuple<float, float, float> a, tuple<float, float, float> s, tuple<float, float, float> d, float number)
+Material::Material(Point *a, Point *d, Point *s, float number)
 {
-  Ka = a;
-  Ks = s;
-  Kd = d;
+  ka = new Point(a);
+  kd = new Point (d);
+  ks = new Point (s);
   n = number;
 }
